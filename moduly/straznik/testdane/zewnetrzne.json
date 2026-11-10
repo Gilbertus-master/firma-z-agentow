@@ -1,0 +1,88 @@
+{
+ "tagi": [
+  "refs/tags/przebieg/ceo/166131",
+  "refs/tags/przebieg/ceo/166131^{}",
+  "refs/tags/przebieg/obsluga/249192",
+  "refs/tags/przebieg/recenzent/996788"
+ ],
+ "prs": {
+  "produkt": [
+   {
+    "number": 301,
+    "title": "Przykład: poprawka ekranu",
+    "isDraft": false,
+    "headRefOid": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "createdAt": "2026-11-09T08:00:00Z",
+    "headDate": "2026-11-09T08:00:00Z"
+   },
+   {
+    "number": 302,
+    "title": "Przykład: nowy head bez werdyktu",
+    "isDraft": false,
+    "headRefOid": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "createdAt": "2026-11-09T07:00:00Z",
+    "headDate": "2026-11-09T10:30:00Z"
+   },
+   {
+    "number": 303,
+    "title": "Przykład: szkic",
+    "isDraft": true,
+    "headRefOid": "dddddddddddddddddddddddddddddddddddddddd",
+    "createdAt": "2026-11-09T07:00:00Z"
+   },
+   {
+    "number": 304,
+    "title": "[wstrzymane] przykład",
+    "isDraft": false,
+    "headRefOid": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+    "createdAt": "2026-11-09T07:00:00Z"
+   }
+  ],
+  "strona": [
+   {
+    "number": 12,
+    "title": "Przykład: strona",
+    "isDraft": false,
+    "headRefOid": "cccccccccccccccccccccccccccccccccccccccc",
+    "createdAt": "2026-11-09T09:00:00Z",
+    "headDate": "2026-11-09T09:00:00Z"
+   }
+  ]
+ },
+ "asc": {
+  "zrzuty": [
+   {
+    "id": "AXtest01-aaaa-bbbb",
+    "data": "2026-11-09T08:00:00.000Z"
+   },
+   {
+    "id": "AXtest02-cccc",
+    "data": "2026-11-09T09:00:00.000Z"
+   },
+   {
+    "id": "AXtest03-dddd",
+    "data": "2026-11-09T11:00:00.000Z"
+   }
+  ],
+  "awarie": []
+ },
+ "automaty": {
+  "cron_failed": [],
+  "net5xx": 0,
+  "build_stan": {
+   "bledy": 3
+  },
+  "fly": {
+   "conclusion": "success",
+   "createdAt": "2026-11-09T07:00:00Z",
+   "status": "completed"
+  },
+  "pages": {
+   "produkt": {
+    "status": "built",
+    "created_at": "2026-11-09T09:00:00Z"
+   },
+   "strona": null
+  }
+ }
+}

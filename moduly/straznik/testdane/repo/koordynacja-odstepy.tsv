@@ -1,0 +1,4 @@
+# agent	odstep_min	poczatek	dni	godziny	od (dane przykładowe strażnika; kolumny jak w koordynacja-odstepy.tsv)
+ceo	180	01:00	*	*	2026-11-07 17:39
+obsluga	120	08:15	*	8:45,10:45,12:45,14:45,16:45,18:45,20:45	2026-11-07 09:16
+recenzent	30	01:15	*	1:45,4:45,7:45,10:45,13:45,16:45,19:45,22:45	2026-11-07 18:46

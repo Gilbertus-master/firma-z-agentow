@@ -1,0 +1,8 @@
+**Porządek w sesjach – raz dziennie, w pierwszym przebiegu dnia (wyjątek tylko dla CEO).** Masz zgodę na archiwizowanie cudzych sesji wyłącznie według tej procedury (pełny opis: `role/ceo.md`, „Porządek w sesjach”). Bez narzędzi zarządzania sesjami (`list_sessions`, `archive_session`) pomijasz ten punkt jednym zdaniem w dzienniku.
+1. Wejścia: `list_sessions` (limit 60) i `gh pr list --state open` w repo z `org.yaml → repo`.
+2. Sesję CZATU archiwizujesz (`archive_session`, powód jednym zdaniem) tylko, gdy spełnia WSZYSTKO: katalog roboczy w folderze organizacji albo produktu; nie działa (`isRunning: false`); nie jest przypięta; ostatnia aktywność ponad 12 h temu; nie jest twoją sesją (`self`), czatem CEO z człowiekiem ani sesją oznaczoną w `rejestr-sesji.md` jako stała; ORAZ (a) jej PR jest scalony albo zamknięty, a 2 ostatnie zdarzenia (`list_events`, limit 2) nie wspominają PR-a, który jest wciąż otwarty, albo (b) nigdy nie miała PR-a i milczy ponad 72 h.
+3. Sesje PRZEBIEGÓW ZAPLANOWANYCH (tytuł zaczyna się od nazwy zadania floty `{{org.prefiks}}-<agent>-<konto>`) archiwizujesz po 12 h ciszy, chyba że ich PR jest wciąż otwarty.
+4. Odmowa narzędzia („trwa praca”) → pomijasz bez ponawiania. Najwyżej 40 sesji na przebieg, od najstarszych.
+5. Nigdy: `delete_session`, `stop_session`, zmiana modelu, trybu, tytułu ani ustawień cudzej sesji; nigdy sesja `self`, przypięta albo działająca. Archiwizację da się cofnąć (`unarchive_session`) – usunięcia nie.
+6. Jedna linia w dzienniku: `**Sesje:** zarchiwizowane N (krótkie tytuły) · pominięte M (powód)`; przy N = 0 bez linii.
+Nie włączasz ustawienia aplikacji „archiwizuj po zamknięciu PR-a” – sesja, która otwiera kilka PR-ów po kolei, zniknęłaby po pierwszym.

@@ -1,0 +1,12 @@
+# Cennik modeli Claude (USD za 1 mln tokenów) – czyta scripts/koszt.py (pomiar kosztu przebiegu z zapisu sesji).
+# Aktualizowany z szablonu razem z klasami modeli (kontrola F-13). Zapis do cache: 5 min = wejście × 1,25; 1 h = wejście × 2.
+# Źródło: cennik Claude API (platform.claude.com/docs/en/about-claude/pricing), stan 10.11.2026; pozycje „sprawdź” – do potwierdzenia.
+mnoznik_cache_5m: 1.25
+mnoznik_cache_1h: 2.0
+modele:
+  claude-fable-5-2:  {wejscie: 10.0, wyjscie: 50.0, cache_odczyt: 0.25}   # sprawdź – przyjęto cennik Fable 5.1
+  claude-fable-5-1:  {wejscie: 10.0, wyjscie: 50.0, cache_odczyt: 0.25}
+  claude-opus-5-5:   {wejscie: 4.0,  wyjscie: 20.0, cache_odczyt: 0.20}
+  claude-sonnet-5-5: {wejscie: 2.0,  wyjscie: 10.0, cache_odczyt: 0.20}
+  claude-haiku-5-5:  {wejscie: 0.10, wyjscie: 0.50, cache_odczyt: 0.01}   # sprawdź – odczyt cache przyjęto jako 10 % wejścia
+domyslny: claude-opus-5-5   # model spoza listy liczony po tej stawce (i oznaczony w raporcie)

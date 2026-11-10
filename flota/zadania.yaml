@@ -1,0 +1,114 @@
+# Manifest floty – źródło prawdy dla zadań zaplanowanych, crona, priorytetu, modelu i promptów (flota/generuj.py).
+# Pola: agent (taskId = <prefiks>-<agent>-<konto>), katalog (nazwa w koordynacja-odstepy.tsv; null = poza blokadą),
+#   priorytet P1/P2/P3 (budżet: limit ≥ 85% → P3 nie pracuje, ≥ 95% → także P2), cron (czas z org.yaml),
+#   konto_w_prompcie, prompt (plik wynikowy), tresc (szablon treści), model (KLASA z org.yaml → runtime.modele: sedzia | mocny |
+#   lekki | mechaniczny – nigdy ID modelu; nowy model zmienia się w jednym miejscu), opis,
+#   BUDŻETY USD: przy org.yaml → runtime.rozliczenie = api – kwoty; przy team – WAGI, które flota/generuj.py skaluje do
+#   pojemności konta floty ((pojemnosc_miejsca_usd_miesiac + nadwyzka_usd_miesiac) × wykorzystanie_cel_proc) → flota/budzety.tsv:
+#   budzet_usd_przebieg (twardy limit --max-budget-usd w scripts/przebieg-headless.sh; domyślnie wartość globalna),
+#   budzet_usd_dzien (miękki: po przekroczeniu scripts/przebieg.sh wypisuje BUDŻET-AGENTA – agent pracuje tylko w trybie ZDARZENIE),
+#   budzet_usd_miesiac (80 % → ostrzeżenie; 100 % → przebieg.sh kończy kodem 10 bez pracy; sufit floty w org.yaml → HALT),
+#   efekt (effort dla scheduled tasks: low/medium/high), konektory (lista konektorów MCP potrzebnych w chmurze).
+# KONTRAKT AGENTA (rek. 9 – reguła dwóch, rejestr AI): typ reader|actor|researcher (reader czyta niezaufane treści – hook blokuje
+#   mu wysyłkę, płatności, wdrożenia; researcher tylko jawne źródła, bez skrzynek), wlasciciel_ludzki (rola z org.yaml: operator|wlasciciel),
+#   narzedzia (konektory/CLI dozwolone), domeny (allowedDomains sandboxu), autonomia (auto|aprobata|eskalacja – per typ zadania).
+# Zmiana: edytuj → python3 flota/generuj.py → commit promptów razem z manifestem. Kolejność = kolejność tworzenia zadań.
+model: mocny                 # klasa domyślna; klasy → ID modeli: org.yaml → runtime.modele
+budzet_usd_przebieg: 2
+budzet_usd_dzien: 5
+budzet_usd_miesiac: 25       # per agent (Paperclip: specjalista 10–25, lider 20–40, CEO 30–50 USD/mies.); 80 % ostrzeżenie, 100 % CISZA
+max_tur: 60
+zadania:
+- agent: limit
+  katalog: null
+  priorytet: P1
+  cron: '*/30 * * * *'
+  konto_w_prompcie: A
+  prompt: ceo/handoff/prompty/limit.md
+  tresc: flota/szablony/tresc/limit.md
+  model: mechaniczny   # zamknięta lista czynności (pomiar limitu, regulator) – bez oceny
+  budzet_usd_przebieg: 0.2
+  budzet_usd_dzien: 1
+  budzet_usd_miesiac: 2
+  typ: actor
+  wlasciciel_ludzki: operator
+  domeny: [api.github.com, github.com]
+  autonomia: aprobata
+  opis: 'Regulator tempa limitu konta Claude (co 30 min): cel równego zużycia okna, hamowanie P3/P2, przy 98% Pilne do CEO – dalej płatna nadwyżka albo tylko P1 do resetu (bez rotacji kont). Tworzyć jako PIERWSZE zadanie na koncie floty.'
+- agent: scalanie
+  katalog: null
+  priorytet: P1
+  cron: '*/15 * * * *'
+  konto_w_prompcie: A
+  prompt: ceo/handoff/prompty/scalanie.md
+  tresc: flota/szablony/tresc/scalanie.md
+  model: mechaniczny   # wykonuje zamkniętą listę czynności ze skryptu – oceny nie ma
+  budzet_usd_przebieg: 0.3
+  budzet_usd_dzien: 3
+  budzet_usd_miesiac: 10
+  typ: actor
+  wlasciciel_ludzki: operator
+  domeny: [api.github.com, github.com]
+  autonomia: aprobata
+  opis: 'Agent scalający (co 15 min): pod blokadą scala PR-y klasy GOTOWY poleceniem z tabeli scripts/scalanie.py (werdykt recenzenta dla bieżącego commita, zielone CI, bez migracji i plików zastrzeżonych), resztę zgłasza temu, kto usuwa przeszkodę. Tworzyć jako DRUGIE zadanie na każdym koncie, zaraz po limit. Opis: ceo/scalanie/README.md.'
+- agent: ceo
+  katalog: ceo
+  priorytet: P1
+  cron: '30 7-21 * * *'
+  konto_w_prompcie: A
+  prompt: ceo/handoff/prompty/ceo.md
+  tresc: flota/szablony/tresc/ceo.md
+  model: mocny
+  budzet_usd_przebieg: 4
+  budzet_usd_dzien: 15
+  budzet_usd_miesiac: 50
+  typ: actor
+  wlasciciel_ludzki: operator
+  domeny: [api.github.com, github.com]
+  autonomia: aprobata
+  opis: 'Zarządzanie organizacją: plan, KPI, priorytety, blokady, zgody w granicach uprawnień, kolejka operatora; co 1 h 7:30–21:30, pełny przegląd w poniedziałek.'
+- agent: recenzent
+  katalog: recenzent
+  priorytet: P1
+  cron: '45 7-21 * * *'
+  konto_w_prompcie: A
+  prompt: ceo/handoff/prompty/recenzent.md
+  tresc: flota/szablony/tresc/_agent.md
+  model: sedzia   # najmocniejszy model i inna rodzina niż autorzy PR-ów (klasa mocny) – self-preference bias sędziego
+  budzet_usd_przebieg: 3
+  budzet_usd_dzien: 10
+  budzet_usd_miesiac: 40
+  typ: actor
+  wlasciciel_ludzki: operator
+  domeny: [api.github.com, github.com]
+  autonomia: aprobata
+  opis: 'Niezależna bramka jakości: werdykt dla każdego PR-a (head SHA), klasa migracji, próba wycofana; uruchamiany przez CEO przy każdym PR-ze, harmonogram to siatka.'
+- agent: pm
+  katalog: pm
+  priorytet: P1
+  cron: '45 0-21/3 * * *'
+  konto_w_prompcie: A
+  prompt: ceo/handoff/prompty/pm.md
+  tresc: flota/szablony/tresc/_agent.md
+  model: mocny
+  typ: actor
+  wlasciciel_ludzki: operator
+  domeny: [api.github.com, github.com]
+  autonomia: aprobata
+  opis: 'Backlog organizacji, terminy, dyżur blokad, przegląd zasadności zadań cyklicznych i kosztu floty.'
+- agent: architekt
+  katalog: architekt
+  priorytet: P1
+  cron: '15 */3 * * *'
+  konto_w_prompcie: A
+  prompt: ceo/handoff/prompty/architekt.md
+  tresc: flota/szablony/tresc/_agent.md
+  model: mocny
+  budzet_usd_przebieg: 6
+  budzet_usd_dzien: 15
+  budzet_usd_miesiac: 40
+  typ: actor
+  wlasciciel_ludzki: operator
+  domeny: [api.github.com, github.com]
+  autonomia: aprobata
+  opis: 'Lider pionu Produkt: projekty funkcji, plany, przegląd architektury, toolbelt techniczny.'

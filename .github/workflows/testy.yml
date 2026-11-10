@@ -1,0 +1,57 @@
+# Testy szkieletu przy każdym pushu i PR. Lista testów jest w jednym miejscu: scripts/testy.sh (flota, strażnik, blokada
+# przebiegów, regulator tempa, nowy agent, aktualizacja spółki, hook uprawnień, decyzje, ewaluacje, KPI, strona planu,
+# model BEP/EBITDA, narzędzia PM, skan recenzenta). Nowy test dopisujesz tam – CI i ludzie uruchamiają to samo.
+name: Testy szkieletu
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  testy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install pyyaml
+      - name: Tożsamość git dla testów (repozytoria tymczasowe)
+        run: |
+          git config --global user.email "ci@example.invalid"
+          git config --global user.name "ci"
+      - name: Pełna suita szablonu (scripts/testy.sh – ta sama lista co lokalnie)
+        run: bash scripts/testy.sh
+
+  ewaluacje-adwersaryjne:
+    # Bramka przed zmianą instrukcji: scenariusze wykonywane modelem. Wymaga sekretu ANTHROPIC_API_KEY (bez niego job jest pomijany).
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: testy
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Czy PR zmienia instrukcje agentów?
+        id: zmiany
+        run: |
+          if git diff --name-only origin/${{ github.base_ref }}...HEAD | grep -E '^(role/|polityki/|zasady\.md|flota/szablony/|ewaluacje/)' >/dev/null; then echo "tak=1" >> "$GITHUB_OUTPUT"; else echo "tak=0" >> "$GITHUB_OUTPUT"; fi
+      - uses: actions/setup-node@v4
+        if: steps.zmiany.outputs.tak == '1' && env.ANTHROPIC_API_KEY != ''
+        env: { ANTHROPIC_API_KEY: "${{ secrets.ANTHROPIC_API_KEY }}" }
+        with: { node-version: "22" }
+      - name: Claude Code CLI + ewaluacje
+        if: steps.zmiany.outputs.tak == '1' && env.ANTHROPIC_API_KEY != ''
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          # model agenta z org.yaml → runtime.modele (klasa z flota/zadania.yaml) – ten sam co w produkcji
+          EWAL_BUDZET: "0.3"
+        run: |
+          npm install -g @anthropic-ai/claude-code
+          python3 -I ewaluacje/uruchom.py

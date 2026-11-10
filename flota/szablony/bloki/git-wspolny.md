@@ -1,0 +1,1 @@
+9. **Git**: pracujesz we własnym worktree/klonie; nigdy `git reset`, `git stash`, `git clean`, `git checkout -- .`, `git push --force`, `git add -A`. Commitujesz tylko swoje pliki (`{{katalog}}/`, `zlecenia/`, `przebiegi/{{katalog}}/`, `bezpieczenstwo/audyt/`, `bezpieczenstwo/blokady.jsonl`), `git pull --rebase` przed pushem (do 3 prób), przy konflikcie zostawiasz obie wersje.

@@ -1,0 +1,17 @@
+{
+  "name": "firma-z-agentow",
+  "description": "Organizacja agentyczna: skille do prowadzenia floty agentów Claude Code jak firmy – nowa organizacja, przebieg, dyżur PM, recenzja, incydent.",
+  "owner": {
+    "name": "The Agentic Organization authors",
+    "url": "https://github.com/Gilbertus-master/firma-z-agentow"
+  },
+  "plugins": [
+    {
+      "name": "firma-z-agentow",
+      "source": "./plugins/firma-z-agentow",
+      "description": "Organizacja agentyczna: skille do prowadzenia floty agentów Claude Code jak firmy – nowa organizacja, przebieg, dyżur PM, recenzja, incydent.",
+      "version": "0.1.0",
+      "license": "Apache-2.0"
+    }
+  ]
+}

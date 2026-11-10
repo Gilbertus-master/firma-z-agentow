@@ -1,0 +1,77 @@
+# Ustawienia kolejki scalania (scripts/scalanie.py). Format płaski: `klucz: wartość` albo `klucz:` + linie `  - "wzorzec"`.
+# Zmienia CEO przez PR (plik reguł – scala CEO albo człowiek, nie agent scalający). Opis klas: ceo/scalanie/README.md.
+
+protokol: 1            # numer umowy skrypt ↔ treść zadania; podnieś przy zmianie poleceń albo klas – stare zadanie nie weźmie blokady
+galaz_glowna: main
+metoda: merge          # merge | squash | rebase; przy stosach PR-ów zostaw merge (squash zmienia listę plików potomka)
+ci_wymagane: tak       # PR bez żadnego checku = BRAK_CI (jedno ponowienie, potem CEO)
+stop_gdy_glowna_czerwona: tak   # czerwone testy gałęzi głównej zatrzymują kolejkę (wiersz GLOWNA_CZERWONA → CEO); stanu nieznanego nie traktuje się jak czerwonego
+
+# Repozytoria bez testów PR (pełna nazwa owner/repo) – brak checków nie blokuje.
+bez_ci:
+
+# Ścieżki, których agent scalający nie scala nigdy – wiersz WYJATEK trafia do CEO (wszystkie repozytoria).
+# Wzorzec z „/” na końcu = katalog od początku ścieżki; z „/” w środku = glob po całej ścieżce; bez „/” = glob po nazwie pliku.
+wyjatki:
+  - ".github/"
+  - ".claude/"
+  - "CLAUDE.md"
+  - "AGENTS.md"
+  - "*.env"
+  - ".env.*"
+  - "Dockerfile"
+  - "docker-compose*.yml"
+  - "fly.toml"
+  - "vercel.json"
+  - "netlify.toml"
+  - "wrangler.toml"
+  - "supabase/config.toml"
+  - "infra/"
+  - "deploy/"
+  - "terraform/"
+  - "prawne/"
+  - "legal/"
+  - "sklepy/"
+  - "fastlane/metadata/"
+
+# Pliki reguł organizacji (tylko repo organizacji): autor nie scala własnej zmiany reguł, agent scalający też nie – CEO albo człowiek.
+reguly:
+  - "*/agent.md"
+  - "role/"
+  - "polityki/"
+  - "zasady.md"
+  - "uprawnienia.yaml"
+  - "org.yaml"
+  - "flota/szablony/"
+  - "flota/zadania.yaml"
+  - "ceo/handoff/prompty/"
+  - "ceo/scalanie/"            # ustawienia, rejestr wstrzymań, stan i dziennik kolejki
+  - "ceo/kontrole/progi.yaml"
+  - "recenzent/stan.json"      # werdykty – PR, który je zmienia, mógłby zatwierdzić sam siebie
+  - "scripts/"                 # mechanizmy: kolejka, blokada przebiegów, kontrole, testy
+  - "flota/generuj.py"
+  - ".gitattributes"
+  - "bezpieczenstwo/"
+
+# Ścieżki repo organizacji, których scalenie wymaga decyzji właściciela (DECYZJA=D-… przed poleceniem, ścieżka CEO).
+# Lista wbudowana w skrypt (zasady.md, uprawnienia.yaml, .claude/, polityki/) obowiązuje zawsze – tutaj można ją tylko wydłużyć.
+wlasciciel:
+  - "zasady.md"
+  - "uprawnienia.yaml"
+  - ".claude/"
+  - "polityki/"
+
+# Katalogi migracji bazy – PR z takim plikiem to wiersz MIGRACJA (CEO; klasa B → właściciel), nigdy scalenie przez agenta.
+migracje:
+  - "migrations/"
+  - "*/migrations/*"
+  - "db/migrate/"
+  - "alembic/versions/"
+  - "*/alembic/versions/*"
+
+# Etykiety PR-a, które zatrzymują scalenie (wiersz DECYZJA → jeden wpis dla CEO).
+etykiety_stop:
+  - "nie-scalac"
+  - "do-not-merge"
+  - "wip"
+  - "czeka-na-decyzje"

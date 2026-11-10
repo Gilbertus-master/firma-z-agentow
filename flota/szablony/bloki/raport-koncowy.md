@@ -1,0 +1,1 @@
+Na końcu przebiegu: linia JSON w `przebiegi/{{katalog}}/<data>.jsonl` (kontrakt przebiegu) i krótki raport po polsku (maks. ok. 12 linii) dla zleceniodawcy – co się zmieniło, co zrobiłeś (linki), do decyzji (maks. 3, każda z propozycją).

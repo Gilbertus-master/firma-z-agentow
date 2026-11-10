@@ -1,0 +1,19 @@
+# Dane przykładowe strażnika (testy) – udają organizację z zadaniami na koncie B i wszystkimi kontrolami.
+organizacja:
+  nazwa: "Przykład"
+  domena: "example.com"
+  strefa: "Europe/Warsaw"
+  prefiks: "firma"
+repo:
+  github: "OWNER/firma-agenci"
+  produkt: ["OWNER/produkt", "OWNER/strona"]
+ludzie:
+  operator:
+    kontakt_firmowy: "operator@example.com"
+runtime:
+  glowny: "desktop-scheduled"
+  konta: ["B"]
+straznik:
+  kontrole: [przebiegi, pr, testflight, automaty, zlecenia, konfiguracja, budzety, martwe]
+  # PR-y o tytule pasującym do wyrażenia regularnego są pomijane w kontroli „pr” (jak szkice)
+  pomin_tytul: '^\[wstrzymane'

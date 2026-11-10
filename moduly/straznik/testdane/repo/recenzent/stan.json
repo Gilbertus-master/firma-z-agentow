@@ -1,0 +1,17 @@
+{
+ "ostatni_przebieg": "2026-11-09T10:50:00+01:00",
+ "recenzje": {
+  "301": {
+   "sha": "aaaaaaa",
+   "werdykt": "OK do scalenia"
+  },
+  "strona#12": {
+   "sha": "ccccccc",
+   "werdykt": "OK do scalenia"
+  },
+  "302": {
+   "sha": "0000000",
+   "werdykt": "OK do scalenia (stary head)"
+  }
+ }
+}

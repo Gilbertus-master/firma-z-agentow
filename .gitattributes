@@ -1,0 +1,5 @@
+przebiegi/**/*.jsonl merge=union
+ceo/straznik-zdarzenia.md merge=union
+bezpieczenstwo/blokady.jsonl merge=union
+bezpieczenstwo/audyt/*.jsonl merge=union
+ceo/scalanie/dziennik.jsonl merge=union

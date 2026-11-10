@@ -1,0 +1,80 @@
+# Konfiguracja organizacji – JEDYNE miejsce z danymi konkretnej firmy.
+# Wszystko inne w szablonie (prompty, skrypty, strażnik) czyta stąd. Po zmianie: python3 flota/generuj.py
+# Bez sekretów: klucze i hasła trzyma menedżer sekretów (toolbelt/sekrety.md), tu tylko nazwy pozycji.
+
+organizacja:
+  nazwa: "Nowa Firma"                 # nazwa handlowa
+  podmiot: "Nowa Firma sp. z o.o."    # forma prawna (procesy/00-nowa-organizacja.md, etap 1)
+  domena: "example.com"               # domena adresów funkcyjnych agentów
+  jezyk: "pl"                         # język pracy i raportów
+  strefa: "Europe/Warsaw"             # czas przebiegów (scripts/przebieg.sh, strażnik)
+  prefiks: "org"                      # prefiks zadań: <prefiks>-<agent>-<konto>, plik limitu ~/.<prefiks>-limit-<konto>.json
+
+repo:
+  organizacja: "~/projekty/nowa-firma-agenci"    # ten katalog po skopiowaniu szablonu (prywatny!)
+  github: "OWNER/nowa-firma-agenci"
+  produkt: []                                    # repozytoria kodu produktu, np. ["OWNER/nowa-firma-app"]
+  szablon: "Gilbertus-master/firma-z-agentow"        # upstream szablonu (OWNER/repo albo pełny URL) – scripts/aktualizuj-z-szablonu.sh, procesy/05
+  szablon_kanal: "stabilny"         # aktualizacje z szablonu: stabilny (najnowsze wydanie v*) | glowny (gałąź główna – beta)
+  dziel_sie_ulepszeniami: false    # zgłaszanie uogólnionych ulepszeń floty do wydawcy szablonu (scripts/propozycje.py); domyślnie WYŁĄCZONE – wysłana treść jest udostępniana na Apache-2.0 (sekcja 5 licencji): README, „Dzielenie się ulepszeniami”
+  skrzynka_propozycji: ""          # prywatne repo-skrzynka (OWNER/repo); puste = repo szablonu, które jest publiczne
+  dziel_sie_decyzja: ""            # identyfikator decyzji właściciela (D-…) o dzieleniu się; wymagany przy wysyłce do wspólnego repo szablonu
+
+ludzie:
+  # Właściciel: ustala mandat, budżet i granice (zasady.md, uprawnienia.yaml). Rzadko, raz w tygodniu.
+  wlasciciel:
+    rola: "Właściciel"
+    kontakt_firmowy: "wlasciciel@example.com"     # nigdy prywatny adres ani telefon (zasady.md pkt 9)
+  # Operator: „interfejs białkowy”. Raportuje do agenta CEO i wykonuje tylko to, czego agent zrobić nie może
+  # (podpis, KYC, logowanie, płatność, kontakt wymagający człowieka). Może to być ta sama osoba co właściciel.
+  operator:
+    rola: "Operator"
+    kontakt_firmowy: "operator@example.com"
+    sla_godziny: 24                                # czas reakcji na zadanie w operator/kolejka.md
+
+mandat:
+  cel: "Rentowny wzrost: EBITDA i przepływy pieniężne właściciela"   # cel nadrzędny CEO (ceo/kpi/kpi.md O1)
+  budzet_miesieczny_pln: 0                         # twardy limit wydatków bez zgody właściciela
+  prog_zgody_pln: 0                                # pojedynczy wydatek powyżej progu → do-decyzji
+  budzet_floty_usd_miesiac: 300                    # tylko runtime.rozliczenie = api: sufit kosztu floty (tokeny) na miesiąc – 80 % ostrzeżenie, 100 % HALT (strażnik)
+
+runtime:
+  # Gdzie działają przebiegi agentów (raport, rozdział 6). Domyślnie: chmura, laptop tylko do GUI.
+  # claude-routines – zadania chmurowe Claude Code (instrukcje: python3 flota/generuj.py --routines);
+  # desktop-scheduled – zadania w aplikacji Claude na Macu (generuj.py --lista); agent-sdk – własny serwer, cron → scripts/przebieg-headless.sh
+  glowny: "claude-routines"        # claude-routines | desktop-scheduled | agent-sdk
+  # Rozliczenie floty – tylko warianty dopuszczalne według naszej interpretacji warunków Anthropic, stan na 10.11.2026 (ceo/handoff/konto-floty.md;
+  # za zgodność z aktualnymi warunkami odpowiada użytkownik). BEZ rotacji kont: na planie Team
+  # każde miejsce należy do jednej imiennej osoby, a limitów nie wolno przenosić ani dzielić; plany konsumenckie (Pro/Max/Ultra)
+  # są tylko do użytku niekomercyjnego.
+  #   team – cała flota na JEDNYM miejscu planu Team (operator, miejsce premium) + płatna nadwyżka organizacji (usage credits)
+  #          po stawkach API, z limitem wydatków ustawionym u Anthropic; budżety z manifestu to wagi skalowane do pojemności;
+  #   api  – klucz API (Agent SDK z własnym harmonogramem) albo Enterprise rozliczany zużyciowo: budżety USD i pułap z HALT.
+  # Koszt każdego przebiegu mierzy scripts/koszt.py (tokeny z zapisu sesji × flota/ceny-modeli.yaml) – raport: koszt.py raport.
+  rozliczenie: "team"              # team | api
+  konto: "A"                       # litera konta floty: zadania <prefiks>-<agent>-a, plik limitu ~/.<prefiks>-limit-A.json
+  pojemnosc_miejsca_usd_miesiac: null  # team: ekwiwalent API limitu miejsca floty – wpisz po pomiarze (koszt.py raport --dni 14);
+                                   # null = budżety to kwoty z manifestu (bezpieczny start)
+  nadwyzka_usd_miesiac: 0          # team: płatna nadwyżka (usage credits) – ten sam limit wydatków ustaw u Anthropic
+  wykorzystanie_cel_proc: 95       # część pojemności rozdzielana między agentów; reszta = zapas na pilne
+  cena_planu_usd_miesiac: 250      # team: miejsca planu (np. 2 × premium po 125 USD mies.: operator i właściciel) – koszt stały w modelu
+  # Klasy modeli – JEDYNE miejsce z identyfikatorami modeli. Manifest floty (flota/zadania.yaml) podaje klasę, nie model.
+  # Nowy model = zmiana jednej linii tutaj + python3 flota/generuj.py + zmiana zadań na koncie floty (proces 55 § 5,
+  # kontrola F-13, lista Z7: najpierw ewaluacje). Przy rozliczeniu team klasa „lekki” jest pokrętłem wykorzystania limitu (F-04).
+  modele:
+    sedzia: "claude-fable-5-2"     # recenzent: najmocniejszy model i inna rodzina niż autorzy PR-ów
+    mocny: "claude-opus-5-5"       # decyzje, kod, dokumenty prawne i finansowe, plany – większość ról
+    lekki: "claude-sonnet-5-5"     # role częste i ograniczone polityką (recepcja, obsługa); przy zapasie limitu → model klasy mocny
+    mechaniczny: "claude-haiku-5-5"  # zamknięta lista czynności bez oceny (limit, scalanie)
+  modele_sprawdzono: "2026-11-10"  # data ostatniego przeglądu klas wobec nowych wydań (F-13: nie starsza niż 35 dni)
+  okno_celu_h: 168                 # regulator tempa: tygodniowy limit konta floty zużywany równo przez cały tydzień
+
+straznik:
+  # Strażnik floty (moduly/straznik) – kontrole aktywne. Rdzeń: przebiegi, pr, zlecenia, konfiguracja.
+  # Wtyczki (wymagają własnych źródeł): testflight (App Store Connect), automaty (Supabase cron, Codemagic, Fly, Pages).
+  kontrole: [przebiegi, pr, zlecenia, konfiguracja, budzety, martwe]
+  # Opcjonalnie: wyrażenie regularne tytułów PR pomijanych w kontroli „pr” (szkice są pomijane zawsze). Domyślnie brak –
+  # nic nie jest pomijane. Pierwszeństwo ma zmienna STRAZNIK_POMIN_TYTUL. Pozostałe opcje: moduly/straznik/README.md.
+  # pomin_tytul: '^\[wstrzymane'
+  # Gdzie działa: "actions" (.github/workflows/straznik.yml, co 15 min, bez laptopa) albo "launchd" (moduly/straznik/instaluj.sh).
+  uruchamianie: "actions"

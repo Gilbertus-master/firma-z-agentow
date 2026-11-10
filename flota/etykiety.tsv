@@ -1,0 +1,35 @@
+nazwa	kolor	opis
+agent:ceo	1d76db	Zlecenie dla agenta ceo
+agent:recenzent	1d76db	Zlecenie dla agenta recenzent
+agent:pm	1d76db	Zlecenie dla agenta pm
+agent:architekt	1d76db	Zlecenie dla agenta architekt
+agent:inzynier	1d76db	Zlecenie dla agenta inzynier
+agent:tester	1d76db	Zlecenie dla agenta tester
+agent:aplikacje	1d76db	Zlecenie dla agenta aplikacje
+agent:lokalizacja	1d76db	Zlecenie dla agenta lokalizacja
+agent:marketing	1d76db	Zlecenie dla agenta marketing
+agent:sprzedaz	1d76db	Zlecenie dla agenta sprzedaz
+agent:obsluga	1d76db	Zlecenie dla agenta obsluga
+agent:recepcja	1d76db	Zlecenie dla agenta recepcja
+agent:wywiad	1d76db	Zlecenie dla agenta wywiad
+agent:prawny	1d76db	Zlecenie dla agenta prawny
+agent:compliance	1d76db	Zlecenie dla agenta compliance
+agent:ochrona-danych	1d76db	Zlecenie dla agenta ochrona-danych
+agent:bezpieczenstwo	1d76db	Zlecenie dla agenta bezpieczenstwo
+agent:finansowy	1d76db	Zlecenie dla agenta finansowy
+agent:ksiegowy	1d76db	Zlecenie dla agenta ksiegowy
+agent:podatkowy	1d76db	Zlecenie dla agenta podatkowy
+agent:inwestorzy	1d76db	Zlecenie dla agenta inwestorzy
+agent:operator	000000	Zadanie dla operatora (człowiek)
+prio:P1	b60205	Priorytet P1 (flota/zadania.yaml, portfel EV)
+prio:P2	d93f0b	Priorytet P2
+prio:P3	fbca04	Priorytet P3
+prio:pilne	e11d21	Pilne – budzi agenta poza harmonogramem
+typ:zlecenie	0e8a16	Zlecenie do wykonania
+typ:werdykt	5319e7	Werdykt recenzenta dla PR-a
+typ:informacja	c5def5	Informacja bez zadania
+typ:blokada	b60205	Ktoś na kogoś czeka
+typ:do-czlowieka	000000	Sprawa dla człowieka: ceo/do-decyzji.md (właściciel) albo operator/kolejka.md
+stan:w-toku	fef2c0	Zajęte – [w toku – sesja, GG:MM] w komentarzu
+stan:czeka	ededed	Czeka na zależność / zgodę
+stan:pr	bfdadc	PR otwarty – link w komentarzu

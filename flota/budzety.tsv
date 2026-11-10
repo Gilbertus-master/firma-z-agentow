@@ -1,0 +1,12 @@
+# Budżety efektywne agentów – GENEROWANE (python3 flota/generuj.py z flota/zadania.yaml i org.yaml), nie edytuj.
+# Czytają: scripts/przebieg.sh (budżet dzienny i miesięczny), moduly/straznik (kontrola budzety).
+# rozliczenie	team
+# flota_usd_miesiac	167.00
+# opis	konto A: pojemność miejsca niezmierzona – kwoty z manifestu (167 USD-ekw.) + nadwyżka 0 USD × 95 %; zmierz: python3 -I scripts/koszt.py raport --dni 14; wagi z manifestu × 1.00
+katalog	waga_usd_miesiac	miesiac_usd	dzien_usd
+limit	2	2.00	1.00
+scalanie	10	10.00	3.00
+ceo	50	50.00	15.00
+recenzent	40	40.00	10.00
+pm	25	25.00	5.00
+architekt	40	40.00	15.00

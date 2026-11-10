@@ -1,0 +1,8 @@
+ceo/straznik.json
+ceo/straznik.json.tmp
+__pycache__/
+.DS_Store
+*.env
+!toolbelt/env/*.env
+.agent-rola
+.claude/sesja-biezaca.json

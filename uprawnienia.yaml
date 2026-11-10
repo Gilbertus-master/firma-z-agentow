@@ -1,0 +1,48 @@
+# Macierz uprawnień: kto może wykonać czynność zewnętrzną bez pytania.
+# Poziomy: sam (agent wykonuje i raportuje) | ceo (agent CEO zatwierdza, wpis „[Decyzja CEO]”) |
+#          wlasciciel (decyzja D-… w decyzje.md z czatu) | operator (wykonuje człowiek – operator/kolejka.md) | nigdy
+# Brak czynności na liście = wlasciciel. Rozszerzenie listy = decyzja właściciela.
+# EGZEKWOWANIE: hook .claude/hooks/uprawnienia.py blokuje narzędzia (Bash, MCP) niezgodne z tą tabelą, zanim się wykonają.
+#   sam → agent z listy `agenci` (pusta = każdy) · ceo → rola ceo albo DECYZJA=D-… (z ID decyzji istniejącej w decyzje.md)
+#   · wlasciciel → tylko z DECYZJA=D-… · operator → wykonuje człowiek, agent nigdy · nigdy → nic nie pomaga.
+#   `agenci` = kto wykonuje czynność na tym poziomie; `sam: [...]` = role, które robią to samodzielnie mimo wyższego poziomu.
+#   `bramka: kwota` – hook przepuszcza role z `sam`/`agenci` tylko, gdy kwota z polecenia ≤ próg `<czynność>_sam_usd` w polityki/progi.yaml;
+#   `bramka: pr` – tylko z werdyktem OK recenzenta dla head SHA i zielonym CI. Pieniądze i scalanie nie zależą od osądu agenta CEO
+#   (Project Vend 2: agent-CEO zatwierdzał ulgi 8× częściej niż odrzucał). Kill switch: plik bezpieczenstwo/HALT.
+#   Rola sesji: plik .agent-rola (pisze scripts/przebieg.sh) albo zmienna AGENT_ROLA; bez roli tylko czynności `sam` bez listy.
+# Startowo wszystko jest ostrożne; CEO co tydzień proponuje poluzowanie tam, gdzie historia jest czysta
+# (ceo/agent.md, sekcja „Upoważnienia”).
+
+czynnosci:
+  # --- komunikacja
+  wysylka_maila:                        { poziom: ceo,        sam: [obsluga],              warunki: "hook: każde narzędzie wysyłki (Resend, Gmail, AgentMail); obsługa sama wg szablonu (mail_odpowiedz_klientowi_wg_szablonu), reszta przez CEO; stopka AI" }
+  mail_odpowiedz_klientowi_wg_szablonu: { poziom: sam,        agenci: [obsluga],           warunki: "szablon z polityki, stopka AI, bez zobowiązań finansowych" }
+  mail_nowy_kontrahent:                 { poziom: ceo,        agenci: [sprzedaz, marketing], warunki: "tylko ze zgodą w CRM (polityki/outbound.md, art. 398 PKE) albo DECYZJA=D-… na kampanię; stopka AI; blacklista" }
+  wysylka_masowa:                       { poziom: wlasciciel }
+  publikacja_tresci_social:             { poziom: ceo,        agenci: [marketing],         warunki: "z kalendarza treści zatwierdzonego przez CEO" }
+  # --- produkt i kod
+  pr_otwarcie:                          { poziom: sam }
+  pr_scalenie_bez_migracji:             { poziom: sam,        bramka: pr,                  warunki: "hook pyta kolejkę scalania (scripts/scalanie.py → bramka): tylko polecenie z tabeli kolejki, dla bieżącego commita (--match-head-commit), pod blokadą scalania; klasa GOTOWY – każda rola; pozostałe klasy – tylko CEO pod własną blokadą; zasady, uprawnienia, polityki i migracja klasy B – z decyzją właściciela (DECYZJA=D-…); opis: ceo/scalanie/README.md" }
+  migracja_zgodna_wstecz:               { poziom: ceo,        warunki: "próba w transakcji wycofanej + pełna suita testów" }
+  migracja_niszczaca_dane:              { poziom: wlasciciel }
+  wdrozenie_produkcja:                  { poziom: operator,   warunki: "nazwany człowiek autoryzuje produkcję przez pierwsze 30 dni bez incydentów; potem właściciel może zmienić na sam z bramką CI (D-…)" }
+  wydanie_w_sklepach:                   { poziom: ceo }
+  # --- pieniądze
+  faktura_wystawienie:                  { poziom: ceo,        agenci: [ksiegowy],          warunki: "przez API programu z walidacją NIP/kwot (MCP Fakturowni tylko odczyt); faktury z numerem KSeF nie da się anulować – błąd = korekta" }
+  zwrot_klientowi:                      { poziom: wlasciciel, sam: [finansowy],            bramka: kwota,               warunki: "reguła dwóch: obsługa (reader) przygotowuje wniosek wg polityki/zwroty.md, wykonuje finansowy (actor) sam do progu zwrot_klientowi_sam_usd; powyżej – właściciel (DECYZJA=D-…)" }
+  zmiana_cen:                           { poziom: wlasciciel }
+  wydatek_ponizej_progu:                { poziom: wlasciciel, sam: [ceo, finansowy],       bramka: kwota,               warunki: "kwota ≤ wydatek_ponizej_progu_sam_usd (polityki/progi.yaml) i w budżecie miesięcznym; inaczej właściciel" }
+  wydatek_powyzej_progu:                { poziom: wlasciciel }
+  przelew:                              { poziom: operator }
+  wpisanie_danych_karty_lub_hasla:      { poziom: nigdy }
+  # --- konta, prawo, urzędy
+  zalozenie_konta_w_usludze:            { poziom: operator,   warunki: "konto firmowe, logowanie i 2FA robi operator" }
+  akceptacja_regulaminu:                { poziom: wlasciciel }
+  podpis_umowy:                         { poziom: operator,   warunki: "po decyzji właściciela; podpis kwalifikowany / profil zaufany" }
+  deklaracja_podatkowa_wyslanie:        { poziom: operator,   warunki: "przygotowuje agent podatkowy, wysyła osoba uprawniona" }
+  zmiana_ustawien_uslugi:               { poziom: ceo,        warunki: "lista usług w toolbelt/katalog.md; DNS i płatności → wlasciciel" }
+  # --- organizacja
+  zlecenie_innemu_agentowi:             { poziom: sam }
+  nowy_agent_lub_zadanie_cykliczne:     { poziom: ceo,        warunki: "wiersz w backlog.md (PM), koszt w flota/zadania.yaml" }
+  zmiana_zasad_lub_uprawnien:           { poziom: wlasciciel }
+  kasowanie_danych_osobowych:           { poziom: wlasciciel }

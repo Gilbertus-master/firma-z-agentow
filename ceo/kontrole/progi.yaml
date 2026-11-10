@@ -1,0 +1,72 @@
+# Progi kontroli menedżerskich – jedyne źródło liczb dla ceo/kontrole/kontrole.md i scripts/kontrole.py.
+# „(start)” = pierwsza propozycja: korekta po 2 tygodniach pomiaru (kontrola H-03), każda zmiana → wiersz w ceo/wiedza/zmiany-instrukcji.md.
+# Format: płaskie `klucz: liczba` (skrypt czyta bez PyYAML). Progu, którego tu nie ma, nie wolno wpisywać w treść kontroli.
+limit_kontroli: 90                # powyżej: najpierw usuń kontrolę bez niezaliczenia przez 4 tygodnie, która nie strzeże wymogu prawnego (§)
+decyzja_wlasciciela_h: 48         # A-03, KPI K12 – sprawa u właściciela starsza niż tyle godzin wymaga pakietu „5 minut właściciela”
+decyzje_wlasciciela_max: 5        # A-03 (start) – ile spraw starszych niż próg może czekać jednocześnie
+operator_sla_h: 24                # A-11 – gdy org.yaml → ludzie.operator.sla_godziny nie jest ustawione
+rejestr_krytyczny_h: 24           # A-02 – pozycja krytyczna w cudzym rejestrze
+rejestr_wysoki_h: 72              # A-02 – pozycja o wysokiej ważności
+pozycja_bez_ruchu_h: 48           # A-07 – „w toku” bez commita, PR-a ani wpisu
+termin_prawny_wyprzedzenie_dni: 14  # A-08 – terminy prawne, podatkowe i sklepowe w tym oknie mają zlecenie
+pr_otwarty_h: 24                  # B-01
+pr_bez_werdyktu_min: 60           # B-01
+werdykt_ok_niescalony_h: 2        # B-02 (start)
+pr_konflikty_max: 3               # B-03 (start)
+pr_konflikt_h: 12                 # B-03 (start)
+wip_otwarte_max: 15               # B-04 (start) – otwarte pozycje na agenta
+wip_w_toku_max: 5                 # B-04 (start)
+najstarsza_pozycja_dni: 7         # B-06
+przerobki_max_proc: 20            # B-07 (start) – PR-y z werdyktem ZMIANY albo poprawką po scaleniu
+wdrozenie_po_scaleniu_min: 30     # B-10
+wydanie_po_zmianie_h: 48          # B-10 – build w sklepie po ostatniej zmianie natywnej
+uwagi_recenzenta_h: 72            # D-02
+uwagi_recenzenta_max: 15          # D-02 (start)
+flaga_max_dni: 30                 # D-03
+dlug_przeglad_dni: 14             # D-01
+zaleznosc_sprawdzona_dni: 7       # E-04
+zaleznosc_wygasa_dni: 30          # E-04, E-05
+plan_do_przepustowosci_max: 1.2   # E-08
+limit_niewykorzystany_max_proc: 20  # E-08, F-04
+straznik_stan_max_min: 20         # F-01
+bezczynny_agent_proc_przebiegow: 5  # F-05 (start)
+probka_zrobione: 3                # F-09 – ile wpisów [zrobione] dziennie sprawdza CEO u źródła
+watek_klienta_h: 24               # G-01
+opinia_sklep_h: 48                # G-02
+aktywacja_min_proc: 50            # G-04 (start)
+model_finansowy_max_dni: 7        # G-08
+kontrole_p_zaliczone_min_proc: 90 # M1 (proces 55)
+powtorka_z_rzedu: 3               # M4 – tyle niezaliczeń z rzędu = kontrola dostaje mechanizm (skrypt, strażnik, hook)
+koszt_kontroli_max_proc: 20       # H-08 (start) – udział kosztu przebiegów CEO w koszcie floty
+eksperymenty_w_toku_max: 2        # H-04 – eksperymenty zarządcze jednocześnie
+eksperyment_okno_dni: 14          # proces 55 – domyślne okno eksperymentu
+okno_skutecznosci_dni: 28         # scripts/kontrole.py skutecznosc
+
+# --- progi użyte w tekście kontroli (dopisane 10.11) ---
+termin_prawny_zapas_dni: 3            # A-08: szkic gotowy tyle dni przed terminem prawnym
+macierz_c_po_wydaniu_dni: 7           # C: kontrole bez ⛔ mają zlecenie najpóźniej tyle dni po wydaniu
+pierwszy_odczyt_miary_dni: 7          # C-12: pierwszy odczyt miary funkcji
+test_po_scaleniu_h: 24                # D-07: tester sprawdza scalenie
+sprawa_zewnetrzna_dni_roboczych: 5    # E-04: sprawa u zewnętrznego podmiotu bez ruchu (start)
+punkt_kontrolny_wyprzedzenie_dni: 7   # E-05: punkt kontrolny przed terminem
+regulator_stan_max_min: 45            # F-04: wiek pliku stanu regulatora
+ten_sam_blad_z_rzedu: 2               # F-03: ten sam błąd źródła w kolejnych przebiegach
+powtorka_klasy_w_7_dni: 2             # F-06: ta sama klasa awarii
+galaz_bez_pr_h: 48                    # F-10: gałąź bez PR-a
+incydent_zapis_h: 24                  # F-08 / Z6: zapis incydentu
+przestoj_automatu_h: 2                # Z6: próg przestoju automatu
+pomiar_kpi_max_h: 24                  # G-03: wiek pomiaru KPI
+wniosek_rodo_wyprzedzenie_dni: 7      # G-06: termin wniosku albo reklamacji
+akcja_pozyskania_h: 48                # G-07: działanie pozyskania
+ucieczka_mechanizm_dni: 7             # H-02: ucieczka dostaje kontrolę albo mechanizm
+kalibracja_min_dni: 14                # H-03: minimalny okres danych przed zmianą progu
+zrodla_nieczytelne_max_proc: 5        # M5: udział kontroli „niesprawdzonych” (start)
+zmiany_operacyjne_tydzien_max: 2      # Z7: zmiany instrukcji w tygodniu
+
+# --- kolejka scalania (scripts/scalanie.py, opis: ceo/scalanie/README.md) ---
+gotowy_rezerwa_ceo_min: 45            # B-02: agent scalający bez śladu od tylu minut → scala przebieg CEO (REZERWA_CEO: TAK)
+blokada_scalania_min: 30              # blokada scalania bez odświeżenia starsza niż tyle minut jest przejmowana
+brak_ci_eskalacja_min: 30             # PR bez żadnego checku: po ponowieniu i tylu minutach sprawa idzie do CEO
+pliki_sporne_min_pr: 3                # B-12: plik zmieniany przez co najmniej tyle otwartych PR-ów trafia do linii PLIKI SPORNE
+werdykt_ok_niescalony_max: 3          # B-02 (start): ile PR-ów z werdyktem OK może czekać dłużej niż werdykt_ok_niescalony_h
+zlecenie_scalania_termin_h: 4         # termin zlecenia, które kolejka wpisuje adresatowi przeszkody

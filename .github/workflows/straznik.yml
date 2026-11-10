@@ -1,0 +1,62 @@
+# Strażnik floty w chmurze – co 15 min, bez laptopa (org.yaml → straznik.uruchamianie: actions).
+# Sekrety repo (Settings → Secrets → Actions):
+#   STRAZNIK_TOKEN      – token GitHub (fine-grained) z odczytem PR-ów repo produktu i zapisem do tego repo;
+#                         bez niego działa github.token (tylko to repo – PR-y repo produktu będą „źródło niedostępne”).
+#   STRAZNIK_RESEND_KEY – klucz Resend do maili alertów (opcjonalnie; bez niego alert = wpis w zlecenia/ceo.md + zdarzenia).
+# Stan między przebiegami (ceo/straznik.json, w .gitignore) trzymany w cache Actions.
+name: Strażnik floty
+
+on:
+  # Harmonogram włącza scripts/init-org.sh w repo nowej firmy (w samym szablonie strażnik nie ma czego pilnować).
+  # STRAZNIK-CRON   schedule:
+  # STRAZNIK-CRON     - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: read
+
+concurrency:
+  group: straznik
+  cancel-in-progress: false
+
+jobs:
+  straznik:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.STRAZNIK_TOKEN || github.token }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Przywróć stan poprzedniego przebiegu
+        uses: actions/cache/restore@v4
+        with:
+          path: ceo/straznik.json
+          key: straznik-stan-${{ github.run_id }}
+          restore-keys: straznik-stan-
+
+      - name: Tożsamość git dla commitów strażnika
+        run: |
+          git config user.name "straznik-floty"
+          git config user.email "straznik@users.noreply.github.com"
+
+      - name: Przebieg strażnika
+        env:
+          GH_TOKEN: ${{ secrets.STRAZNIK_TOKEN || github.token }}
+          STRAZNIK_RESEND_KEY: ${{ secrets.STRAZNIK_RESEND_KEY }}
+          STRAZNIK_ZADANIA: /nonexistent-zadania   # brak katalogu zadań desktopu – kontrola konfiguracji pominięta (runtime chmurowy)
+          TZ: UTC
+        run: python3 moduly/straznik/straznik.py --repo "$GITHUB_WORKSPACE"
+
+      - name: Zapisz stan
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: ceo/straznik.json
+          key: straznik-stan-${{ github.run_id }}

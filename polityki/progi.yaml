@@ -1,0 +1,6 @@
+# Progi kwotowe bramek deterministycznych (USD). Czyta je hook .claude/hooks/uprawnienia.py.
+# Zmiana = decyzja właściciela (D-… w decyzje.md). Wartość 0 = agent nigdy nie wykonuje sam.
+# Nazwa klucza: <czynność z uprawnienia.yaml>_sam_usd.
+zwrot_klientowi_sam_usd: 50          # obsługa zwraca sama do tej kwoty (polityki/zwroty.md podaje powody); powyżej – właściciel
+wydatek_ponizej_progu_sam_usd: 0     # wydatki: startowo tylko z decyzją właściciela; podnieś po 30 dniach bez incydentów
+outbound_dzien: 0                    # maks. nowych kontaktów wychodzących dziennie (0 = brak outboundu do decyzji właściciela)
