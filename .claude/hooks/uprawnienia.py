@@ -14,11 +14,21 @@ odblokowuje poziomy `ceo` i `wlasciciel`. Poziom `operator`, `nigdy` i zakazy gi
 Bramki deterministyczne (uprawnienia.yaml → `bramka:`): `kwota` (kwota z polecenia ≤ próg z polityki/progi.yaml),
 `pr` (o scaleniu decyduje kolejka: `scripts/scalanie.py` → `bramka` – tylko polecenie z tabeli, dla aktualnego commita,
 pod blokadą scalania; klasa GOTOWY dla każdej roli, pozostałe tylko CEO; opis: ceo/scalanie/README.md).
-Polecenie złożone (`a && b`, `a; b`, `a | b`): sprawdzana jest każda czynność osobno – jedna odmowa blokuje całość.
+Polecenie złożone (`a && b`, `a; b`, `a | b`, `$(a)`): sprawdzany jest każdy człon osobno – jedna odmowa blokuje całość.
 Kill switch: plik `bezpieczenstwo/HALT` (treść = powód) → każde narzędzie poza odczytem zablokowane, sesja zatrzymana.
+BLOKOWANIE DOMYŚLNE: wolno tylko to, co jest na liście `dozwolone-polecenia.txt` (polecenia Bash, narzędzia wbudowane,
+wzorce narzędzi MCP) albo jest czynnością z `uprawnienia.yaml`, do której rola ma prawo. Polecenie spoza listy = czynność
+`spoza_listy` (poziom wlasciciel). Polecenie Bash jest rozbierane z uwzględnieniem cudzysłowów, `$(…)`, heredoków,
+`bash -c`, `xargs`, `find -exec` – każdy człon osobno. Zapis do plików sterujących (hook, settings, uprawnienia, zasady,
+lista, progi, audyt) = `zmiana_zasad_lub_uprawnien`; zapis do rejestru decyzji = `zapis_decyzji`.
+Awaria = odmowa: nieczytelne wejście, brak `uprawnienia.yaml`, brak listy, polecenie nie do rozebrania → ZABLOKOWANE.
+GRANICE (to poręcz, nie piaskownica): dozwolony interpreter (python3, node, bash plik.sh) wykona dowolny kod; rola z
+`.agent-rola` jest deklaracją, nie uwierzytelnieniem; odczyt sieci (curl GET, WebFetch) pozostaje kanałem wycieku.
+Izolację dają dopiero: osobne konto/kontener, sekrety poza zasięgiem agenta, uprawnienia tokenów po stronie usług.
 Detekcja pętli: to samo polecenie Bash ≥ LIMIT_POWTORZEN razy z rzędu w jednej sesji → ZABLOKOWANE (incydent #15909).
 Audyt: `bezpieczenstwo/audyt/RRRR-MM.jsonl` (merge=union), każdy rekord z `prev_hash` i `hash` (SHA-256 łańcuch).
 """
+import fnmatch
 import hashlib
 import json
 import os
@@ -41,7 +51,7 @@ ZAKAZANE = [
     (r"\bgit\b[^|;&]*\badd\b[^|;&]*(\s-A\b|--all\b|\s\.(\s|$))", "git add -A / git add ."),
     (r"\bgit\b[^|;&]*\bbranch\b[^|;&]*\s-D\b", "git branch -D"),
     (r"\brm\b[^|;&]*\s-[a-zA-Z]*r[a-zA-Z]*f?[^|;&]*\s(/|~|\$HOME)(\s|$)", "rm -rf katalogu domowego lub /"),
-    (r"(\bcat\b|\bless\b|\bhead\b|\btail\b|\bsource\b|\bexport\b)[^|;&]*(\.env\b|~/\.ssh/|~/\.aws/|id_rsa|id_ed25519)", "odczyt pliku z sekretami"),
+    (r"(\bcat\b|\bless\b|\bhead\b|\btail\b|\bsource\b|\bexport\b)[^|;&]*(\.env(?!\.(?:example|sample|template|dist)\b)\b|~/\.ssh/|~/\.aws/|id_rsa|id_ed25519)", "odczyt pliku z sekretami"),
     (r"(?i)\bpulls/\d+/merge\b|\b(mergePullRequest|enablePullRequestAutoMerge|enqueuePullRequest)\b",
      "scalenie PR-a poza kolejką (API GitHuba) – scala się tylko poleceniem z tabeli: python3 -I scripts/scalanie.py; stan PR-a: gh pr view <nr> --json state"),
 ]
@@ -63,7 +73,6 @@ WZORCE_BASH = [
     (r"api\.stripe\.com/v1/(transfers|payouts)|\bstripe\s+(transfers|payouts)\s+create\b", "przelew"),
     (r"\b(xcrun\s+altool|fastlane\s+(deliver|supply|pilot)|eas\s+submit)\b", "wydanie_w_sklepach"),
     (r"\b(ssh|scp)\b[^|;&]*\b(prod|produkcja|vps)\b", "wdrozenie_produkcja"),
-    (r"\bcurl\b[^|;&]*-X\s*(POST|PUT|PATCH|DELETE)\b", "zmiana_ustawien_uslugi"),  # każdy inny zapis przez HTTP
 ]
 
 # Narzędzia MCP (nazwa `mcp__<serwer>__<narzędzie>`) → czynność.
@@ -168,39 +177,822 @@ def decyzja_z_srodowiska(repo, polecenie=""):
     return kandydat if re.search(r"^###\s+%s\b" % re.escape(kandydat), tekst, re.M) else None
 
 
-# ---------- rozpoznanie czynności ----------
+# ---------- lista dozwolonych (blokowanie domyślne) ----------
 
-def czynnosc_z_wejscia(nazwa_narzedzia, wejscie):
-    """-> (rodzaj: ZAKAZANE|CZYNNOSC|WOLNO, czynność/opis, szczegół)."""
-    if nazwa_narzedzia == "Bash":
-        cmd = str(wejscie.get("command", ""))
-        for wzor, opis in ZAKAZANE:
-            if re.search(wzor, cmd):
-                return "ZAKAZANE", opis, cmd
-        for wzor, cz in WZORCE_BASH:
-            if re.search(wzor, cmd, re.I):
-                return "CZYNNOSC", cz, cmd
-        return "WOLNO", "", cmd
-    if nazwa_narzedzia.startswith("mcp__"):
-        for wzor, cz in WZORCE_MCP:
-            if re.search(wzor, nazwa_narzedzia):
-                return "CZYNNOSC", cz, nazwa_narzedzia
-        return "WOLNO", "", nazwa_narzedzia  # nieznane/odczytowe narzędzie MCP – strażnik i recenzent widzą skutki
-    if nazwa_narzedzia in ("Write", "Edit", "MultiEdit", "NotebookEdit"):
-        return "WOLNO", "", str(wejscie.get("file_path", ""))
-    return "WOLNO", "", ""
+PLIK_LISTY = "dozwolone-polecenia.txt"
+NARZEDZIA_ZAPISU = {"Write", "Edit", "MultiEdit", "NotebookEdit"}
+NARZEDZIA_HARMONOGRAMU = {"CronCreate", "CronDelete", "RemoteTrigger"}
+OPCJE_Z_WARTOSCIA = {
+    "git": {"-C", "-c", "--git-dir", "--work-tree", "--namespace"},
+    "gh": {"-R", "--repo"},
+    "npm": {"--prefix", "-w", "--workspace"},
+}
+KATALOGI_SYSTEMOWE = ("/bin/", "/usr/bin/", "/usr/local/bin/", "/opt/homebrew/bin/", "/sbin/", "/usr/sbin/")
+SLOWA_KLUCZOWE = {"if", "then", "elif", "else", "do", "while", "until", "!", "{", "}", "time", "done", "fi", "esac", "[[", "(("}
+SLOWA_CALOSC = {"for", "select", "case", "in", "function"}
+# opakowanie -> opcje, które biorą wartość (reszta po opakowaniu jest oceniana jak osobne polecenie)
+OPAKOWANIA = {
+    "env": {"-u", "-C", "-S"}, "nohup": set(), "timeout": {"-s", "-k", "--signal", "--kill-after"},
+    "gtimeout": {"-s", "-k", "--signal", "--kill-after"}, "command": set(), "nice": {"-n"},
+    "caffeinate": {"-t", "-w"}, "stdbuf": {"-i", "-o", "-e"}, "exec": {"-a"}, "builtin": set(), "noglob": set(),
+    "time": {"-o", "-f"},
+    "xargs": {"-I", "-n", "-P", "-L", "-d", "-E", "-s", "-J", "-R"},
+}
+ZAWSZE_ODMOWA = {"sudo", "doas", "su", "eval"}
+POWLOKI = {"bash", "sh", "zsh", "dash", "ksh"}
+INTERPRETERY = {"node", "deno", "bun", "perl", "ruby", "php", "psql", "sqlite3", "mysql", "osascript", "ssh", "tsx", "ts-node"}
+# polecenia, których rozpoznana czynność (uprawnienia.yaml) zastępuje wpis na liście dozwolonych
+POLECENIA_CZYNNOSCI = {"gh", "fly", "flyctl", "vercel", "wrangler", "netlify", "supabase", "psql", "stripe", "xcrun",
+                       "fastlane", "eas", "ssh", "scp", "curl", "wget"}
+CHRONIONE_PLIKI = (".claude/settings.json", ".claude/settings.local.json", "uprawnienia.yaml", "zasady.md", PLIK_LISTY,
+                   "polityki/progi.yaml", "bezpieczenstwo/blokady.jsonl", ".agent-rola")
+CHRONIONE_KATALOGI = (".claude/hooks", "bezpieczenstwo/audyt")
+CHRONIONE_RODZICE = (".", ".claude", ".claude/hooks", "bezpieczenstwo", "bezpieczenstwo/audyt", "polityki", "decyzje")
 
 
-def czynnosci_bash(cmd):
-    """Wszystkie czynności polecenia złożonego: pierwszy pasujący wzorzec z każdego członu (człony dzielą ; & | i nowa linia)."""
-    wyn = []
-    for czlon in re.split(r"[;&|\n]+", str(cmd)):
-        for wzor, cz in WZORCE_BASH:
-            if re.search(wzor, czlon, re.I):
-                if cz not in wyn:
-                    wyn.append(cz)
-                break
+def czytaj_liste(repo):
+    """Czyta dozwolone-polecenia.txt -> {"polecenia": [krotki słów], "sciezki": [], "narzedzia": set, "mcp": []}.
+    Brak pliku albo błąd odczytu -> None (wtedy przechodzą wyłącznie narzędzia odczytu)."""
+    try:
+        tekst = (repo / PLIK_LISTY).read_text(encoding="utf-8")
+    except (OSError, UnicodeError):
+        return None
+    wyn = {"polecenia": [], "sciezki": [], "narzedzia": set(), "mcp": []}
+    sekcja = None
+    for linia in tekst.splitlines():
+        linia = linia.split("#", 1)[0].strip()
+        if not linia:
+            continue
+        if linia.startswith("[") and linia.endswith("]"):
+            sekcja = linia[1:-1].strip()
+            continue
+        if sekcja == "polecenia":
+            wyn["polecenia"].append(tuple(linia.split()))
+        elif sekcja == "narzedzia":
+            wyn["narzedzia"].update(linia.split())
+        elif sekcja in ("sciezki", "mcp"):
+            wyn[sekcja].append(linia)
     return wyn
+
+
+def slowa_pozycyjne(slowa):
+    """Nazwa polecenia + kolejne słowa niebędące opcjami (z pominięciem wartości znanych opcji)."""
+    if not slowa:
+        return []
+    nazwa = slowa[0]
+    z_wartoscia = OPCJE_Z_WARTOSCIA.get(nazwa, ())
+    wyn, pomin = [nazwa], False
+    for s in slowa[1:]:
+        if pomin:
+            pomin = False
+        elif s in z_wartoscia:
+            pomin = True
+        elif not s.startswith("-"):
+            wyn.append(s)
+    return wyn
+
+
+def na_liscie(lista, slowa):
+    poz = slowa_pozycyjne(slowa)
+    return any(tuple(poz[:len(w)]) == w for w in lista["polecenia"])
+
+# ---------- rozbiór polecenia powłoki ----------
+
+class Blad(Exception):
+    """Polecenia nie da się jednoznacznie rozebrać – odmowa."""
+
+
+ZNAK = "\x00"   # miejsce po podstawieniu polecenia $(…) – wartość nieznana
+
+
+def _apostrof(s, i):
+    """s[i] == "'" -> indeks zamykającego apostrofu."""
+    j = s.find("'", i + 1)
+    if j < 0:
+        raise Blad("niezamknięty apostrof")
+    return j
+
+
+def _cudzyslow(s, i):
+    """s[i] == '"' -> indeks zamykającego cudzysłowu (z pominięciem \\x i zagnieżdżonych $(…))."""
+    j, n = i + 1, len(s)
+    while j < n:
+        c = s[j]
+        if c == "\\":
+            j += 2
+        elif c == '"':
+            return j
+        elif c == "$" and s.startswith("$(", j):
+            j = dopasuj(s, j + 1) + 1
+        elif c == "`":
+            j = _grawis(s, j) + 1
+        else:
+            j += 1
+    raise Blad("niezamknięty cudzysłów")
+
+
+def _grawis(s, i):
+    j, n = i + 1, len(s)
+    while j < n:
+        if s[j] == "\\":
+            j += 2
+        elif s[j] == "`":
+            return j
+        else:
+            j += 1
+    raise Blad("niezamknięty grawis")
+
+
+RE_HEREDOK = re.compile(r"<<-?[ \t]*(['\"]?)([A-Za-z_][A-Za-z0-9_]*)\1")
+
+
+def dopasuj(s, i, otw="(", zam=")"):
+    """s[i] == otw -> indeks pasującego zam, z pominięciem cytatów i treści heredoków."""
+    gl, j, n, hered = 0, i, len(s), []
+    while j < n:
+        c = s[j]
+        if c == "\\":
+            j += 2
+            continue
+        if c == "'":
+            j = _apostrof(s, j)
+        elif c == '"':
+            j = _cudzyslow(s, j)
+        elif c == "`":
+            j = _grawis(s, j)
+        elif c == "<" and otw == "(" and s.startswith("<<", j) and not s.startswith("<<<", j):
+            m = RE_HEREDOK.match(s, j)
+            if m:
+                hered.append((m.group(2), s[j + 2:j + 3] == "-"))
+                j = m.end() - 1
+        elif c == "\n" and hered:
+            j += 1
+            while hered:
+                term, tab = hered.pop(0)
+                while j < n:
+                    k = s.find("\n", j)
+                    k = n if k < 0 else k
+                    linia, j = s[j:k], min(k + 1, n)
+                    if (linia.lstrip("\t") if tab else linia) == term:
+                        break
+            continue
+        elif c == otw:
+            gl += 1
+        elif c == zam:
+            gl -= 1
+            if gl == 0:
+                return j
+        j += 1
+    raise Blad("niezamknięty nawias")
+
+
+def podstawienia(t, glebia, wyn):
+    """Tekst z cudzysłowu, heredoka, ${…}, [[ … ]]: rozbiera zawarte podstawienia poleceń do `wyn`
+    i zwraca tekst, w którym każde z nich zastępuje ZNAK."""
+    j, n, out = 0, len(t), []
+    while j < n:
+        c = t[j]
+        if c == "\\":
+            out.append(t[j + 1:j + 2])
+            j += 2
+        elif c == "$" and t.startswith("$((", j):
+            k = dopasuj(t, j + 1)
+            podstawienia(t[j + 3:k - 1], glebia, wyn)
+            out.append("0")
+            j = k + 1
+        elif c == "$" and t.startswith("$(", j):
+            k = dopasuj(t, j + 1)
+            rozbierz(t[j + 2:k], glebia + 1, wyn)
+            out.append(ZNAK)
+            j = k + 1
+        elif c == "`":
+            k = _grawis(t, j)
+            rozbierz(t[j + 1:k].replace("\\`", "`"), glebia + 1, wyn)
+            out.append(ZNAK)
+            j = k + 1
+        else:
+            out.append(c)
+            j += 1
+    return "".join(out)
+
+RE_FD = re.compile(r"\d+-?|-")
+RE_FUNKCJA = re.compile(r"\(\s*\)")
+
+
+class _Stan:
+    def __init__(self):
+        self.slowa, self.zapis, self.hered = [], [], []
+        self.slowo, self.cyt, self.cel, self.tab = None, False, None, False
+
+
+def rozbierz(s, glebia=0, wyn=None):
+    """Rozbiera polecenie powłoki na płaską listę członów (także z podstawień i podpowłok).
+    -> (człony, nazwy funkcji zdefiniowanych w poleceniu). Człon: {"slowa", "zapis", "sep", "heredoki"}."""
+    if glebia > 8:
+        raise Blad("zbyt głębokie zagnieżdżenie")
+    if wyn is None:
+        wyn = ([], set())
+    segs, funkcje = wyn
+    baza, st, oczek = len(segs), _Stan(), []
+    n, i, nawiasy, jest_case = len(s), 0, 0, False
+
+    def dodaj(t, cyt=False):
+        st.slowo = (st.slowo or "") + t
+        st.cyt = st.cyt or cyt
+
+    def koniec_slowa():
+        nonlocal jest_case
+        w = st.slowo
+        if w is None:
+            return
+        if st.cel == "zapis":
+            st.zapis.append(w)
+        elif st.cel == "heredok":
+            oczek.append((w, st.tab, st.cyt, st.hered))
+        elif st.cel is None:
+            st.slowa.append(w)
+            jest_case = jest_case or (w == "case" and not st.cyt)
+        st.slowo, st.cel, st.cyt = None, None, False
+
+    def koniec_segmentu(sep):
+        koniec_slowa()
+        if st.cel:
+            raise Blad("przekierowanie bez celu")
+        if st.slowa or st.zapis or any(o[3] is st.hered for o in oczek):
+            segs.append({"slowa": st.slowa, "zapis": st.zapis, "sep": sep, "heredoki": st.hered})
+        st.slowa, st.zapis, st.hered = [], [], []
+
+    def na_poczatku():
+        return st.slowo is None and all(w in SLOWA_KLUCZOWE for w in st.slowa)
+
+    while i < n:
+        c = s[i]
+        if c == "\\":
+            if s[i + 1:i + 2] != "\n":
+                dodaj(s[i + 1:i + 2], True)
+            i += 2
+        elif c == "'":
+            j = _apostrof(s, i)
+            dodaj(s[i + 1:j], True)
+            i = j + 1
+        elif c == '"':
+            j = _cudzyslow(s, i)
+            dodaj(podstawienia(s[i + 1:j], glebia, wyn), True)
+            i = j + 1
+        elif c == "$":
+            if s.startswith("$'", i):
+                j = i + 2
+                while j < n and s[j] != "'":
+                    j += 2 if s[j] == "\\" else 1
+                if j >= n:
+                    raise Blad("niezamknięty apostrof")
+                dodaj(s[i + 2:j], True)
+            elif s.startswith("$((", i):
+                j = dopasuj(s, i + 1)
+                podstawienia(s[i + 3:j - 1], glebia, wyn)
+                dodaj("0")
+            elif s.startswith("$(", i):
+                j = dopasuj(s, i + 1)
+                rozbierz(s[i + 2:j], glebia + 1, wyn)
+                dodaj(ZNAK)
+            elif s.startswith("${", i):
+                j = dopasuj(s, i + 1, "{", "}")
+                podstawienia(s[i + 2:j], glebia, wyn)
+                dodaj(s[i:j + 1])
+            else:
+                j = i
+                dodaj("$")
+            i = j + 1
+        elif c == "`":
+            j = _grawis(s, i)
+            rozbierz(s[i + 1:j].replace("\\`", "`"), glebia + 1, wyn)
+            dodaj(ZNAK)
+            i = j + 1
+        elif c == "#" and st.slowo is None:
+            j = s.find("\n", i)
+            i = n if j < 0 else j
+        elif c in " \t":
+            koniec_slowa()
+            i += 1
+        elif c == "\n":
+            koniec_segmentu("\n")
+            i += 1
+            while oczek:                                    # treści heredoków zaczynają się po końcu wiersza
+                term, tab, cyt, lista = oczek.pop(0)
+                linie = []
+                while i < n:
+                    j = s.find("\n", i)
+                    j = n if j < 0 else j
+                    linia, i = s[i:j], min(j + 1, n)
+                    if (linia.lstrip("\t") if tab else linia) == term:
+                        break
+                    linie.append(linia)
+                tresc = "\n".join(linie)
+                lista.append(tresc if cyt else podstawienia(tresc, glebia, wyn))
+        elif c == ";":
+            koniec_segmentu(";")
+            i += 2 if s.startswith(";;", i) else 1
+        elif c == "&":
+            if s.startswith("&&", i):
+                koniec_segmentu("&&")
+                i += 2
+            elif s.startswith("&>", i):
+                koniec_slowa()
+                st.cel = "zapis"
+                i += 3 if s.startswith("&>>", i) else 2
+            else:
+                koniec_segmentu("&")
+                i += 1
+        elif c == "|":
+            dwa = s.startswith("||", i)
+            koniec_segmentu("||" if dwa else "|")
+            i += 2 if dwa or s.startswith("|&", i) else 1
+        elif c in "<>":
+            if s.startswith(c + "(", i):                    # podstawienie procesu <(…) >(…)
+                j = dopasuj(s, i + 1)
+                rozbierz(s[i + 2:j], glebia + 1, wyn)
+                dodaj(ZNAK)
+                i = j + 1
+                continue
+            if st.slowo is not None and st.slowo.isdigit() and not st.cyt:
+                st.slowo = None                             # numer deskryptora przed przekierowaniem
+            koniec_slowa()
+            if st.cel:
+                raise Blad("przekierowanie bez celu")
+            if s.startswith("<<<", i):
+                st.cel, i = "odczyt", i + 3
+            elif s.startswith("<<", i):
+                i += 2
+                st.tab = s[i:i + 1] == "-"
+                i += 1 if st.tab else 0
+                st.cel = "heredok"
+            else:
+                i += 1
+                if c == ">" and s[i:i + 1] in (">", "|"):
+                    i += 1
+                if s[i:i + 1] == "&":
+                    i += 1
+                    m = RE_FD.match(s, i)
+                    if m:
+                        i = m.end()
+                        continue
+                st.cel = "zapis" if c == ">" else "odczyt"
+        elif c == "(":
+            m = RE_FUNKCJA.match(s, i)
+            if st.slowo is not None:
+                if m and not st.cyt and (not st.slowa or st.slowa == ["function"]):
+                    funkcje.add(st.slowo)                   # definicja funkcji: nazwa()
+                    st.slowo, st.slowa, i = None, [], m.end()
+                else:                                       # tablica a=(…) albo wzorzec z nawiasem
+                    j = dopasuj(s, i)
+                    dodaj(podstawienia(s[i:j + 1], glebia, wyn))
+                    i = j + 1
+            elif s.startswith("((", i) and (na_poczatku() or st.slowa == ["for"]):
+                j = dopasuj(s, i)
+                podstawienia(s[i + 2:j - 1], glebia, wyn)
+                st.slowa.append("((")
+                i = j + 1
+            elif m and st.slowa and (len(st.slowa) == 1 or st.slowa[0] == "function"):
+                funkcje.add(st.slowa[-1])                   # definicja funkcji: nazwa ()
+                st.slowa, i = [], m.end()
+            elif na_poczatku():
+                koniec_segmentu("(")
+                nawiasy += 1
+                i += 1
+            elif jest_case:
+                i += 1
+            else:
+                raise Blad("nawias w nieoczekiwanym miejscu")
+        elif c == ")":
+            if nawiasy > 0:
+                koniec_segmentu(")")
+                nawiasy -= 1
+            elif jest_case:                                 # wzorzec gałęzi `case`: słowa przed `)` nie są poleceniem
+                st.slowo, st.slowa, st.cel = None, [], None
+                while len(segs) > baza and segs[-1]["sep"] == "|":
+                    segs.pop()
+            else:
+                raise Blad("nawias zamykający bez otwierającego")
+            i += 1
+        elif c == "[" and st.slowo is None and s.startswith("[[", i) and s[i + 2:i + 3].isspace() and na_poczatku():
+            j = s.find("]]", i)
+            if j < 0:
+                raise Blad("niezamknięte [[")
+            podstawienia(s[i + 2:j], glebia, wyn)
+            st.slowa.append("[[")
+            i = j + 2
+        else:
+            dodaj(c)
+            i += 1
+    koniec_segmentu("")
+    return wyn
+
+# ---------- pliki chronione i zapisy HTTP ----------
+
+ZASADY = "zmiana_zasad_lub_uprawnien"
+RE_LOKALNY = re.compile(r"^(https?://)?(localhost|127\.0\.0\.1|\[::1\])([:/]|$)")
+RE_HTTP_KOD = re.compile(
+    r"""\b(requests|httpx|session|client|axios|http)\.(post|put|patch|delete)\s*\(|method\s*[=:]\s*['"](POST|PUT|PATCH|DELETE)['"]"""
+    r"""|urlopen\([^)]*data\s*=|Request\([^)]*data\s*=|\.request\(\s*['"](POST|PUT|PATCH|DELETE)""", re.I)
+RE_SQL_NISZCZY = re.compile(r"\b(DROP|TRUNCATE|DELETE\s+FROM)\b", re.I)
+RE_SQL_ZMIENIA = re.compile(r"\b(ALTER|CREATE|INSERT|UPDATE)\b", re.I)
+
+
+def w_katalogu(katalog, sciezka):
+    """-> ścieżka względna (z ukośnikami) wewnątrz katalogu, "." dla niego samego, None gdy poza nim."""
+    k = os.path.realpath(str(katalog))
+    p = os.path.realpath(sciezka)
+    if p == k:
+        return "."
+    if p.startswith(k + os.sep):
+        return p[len(k) + 1:].replace(os.sep, "/")
+    return None
+
+
+def chroniony(repo, cwd, p, rodzic=False):
+    """Zapis do pliku sterującego organizacją -> nazwa czynności; inaczej None."""
+    p = str(p)
+    if not p:
+        return None
+    if "$" in p or ZNAK in p:                               # ścieżki nie da się ustalić – ocena po tekście
+        if any(f in p for f in CHRONIONE_PLIKI + CHRONIONE_KATALOGI):
+            return ZASADY
+        return "zapis_decyzji" if re.search(r"decyzje(/|\.md)", p) else None
+    if p.startswith("~"):
+        p = os.path.expanduser(p)
+    katalogi = list(cwd) if isinstance(cwd, (list, tuple)) else [cwd]   # po `cd` w poleceniu: wszystkie możliwe katalogi
+    if not os.path.isabs(p) and None in katalogi:                       # `cd` do katalogu ustalanego w trakcie wykonania
+        nazwa = os.path.basename(p.rstrip("/"))
+        znane = {os.path.basename(f) for f in CHRONIONE_PLIKI + CHRONIONE_KATALOGI}
+        for d in CHRONIONE_KATALOGI:
+            try:
+                znane.update(os.listdir(os.path.join(str(repo), d)))
+            except OSError:
+                pass
+        if nazwa in znane:
+            return ZASADY
+    kandydaci = [p] if os.path.isabs(p) else [os.path.join(str(k), p) for k in katalogi + [repo] if k]
+    for k in kandydaci:
+        rel = w_katalogu(repo, k)
+        if rel is None:
+            continue
+        if rel in CHRONIONE_PLIKI or any(rel == d or rel.startswith(d + "/") for d in CHRONIONE_KATALOGI):
+            return ZASADY
+        if rodzic and rel in CHRONIONE_RODZICE:
+            return ZASADY
+        if any(z in rel for z in "*?[") and any(
+                fnmatch.fnmatch(x, rel) or fnmatch.fnmatch(x.split("/")[0], rel) for x in CHRONIONE_PLIKI + CHRONIONE_KATALOGI):
+            return ZASADY
+        if rel == "decyzje.md" or (rel.startswith("decyzje/") and rel.endswith(".md")):
+            return "zapis_decyzji"
+    return None
+
+
+def mutacje(nazwa, slowa, repo, cwd):
+    """Czynności wynikające z tego, że polecenie zmienia albo usuwa pliki chronione."""
+    opcje = slowa[1:]
+    args = [a for a in opcje if not a.startswith("-")]
+    cele, rodzic = [], False
+    if nazwa in ("rm", "mv", "unlink", "shred", "rmdir"):
+        cele, rodzic = args, True
+    elif nazwa in ("tee", "truncate", "chmod", "chown", "touch"):
+        cele = args
+    elif nazwa == "sed" and any(re.match(r"-[a-zA-Z]*i|--in-place", a) for a in opcje):
+        cele = args
+    elif nazwa == "perl" and any(re.match(r"-[a-zA-Z0-9]*i", a) for a in opcje):
+        cele = args
+    elif nazwa in ("cp", "install", "ln", "rsync"):
+        cele = args[-1:]
+    elif nazwa == "dd":
+        cele = [a[3:] for a in opcje if a.startswith("of=")]
+    elif nazwa == "git":
+        poz = slowa_pozycyjne(slowa)
+        if len(poz) > 1 and poz[1] in ("checkout", "restore", "rm", "mv"):
+            cele = poz[2:]
+    wyn = []
+    for c in cele:
+        cz = chroniony(repo, cwd, c, rodzic)
+        if cz and cz not in wyn:
+            wyn.append(cz)
+    return wyn
+
+
+def zapis_http(nazwa, slowa, kod):
+    """Polecenie, które zmienia stan usługi zewnętrznej przez HTTP -> zmiana_ustawien_uslugi."""
+    cz, args = "zmiana_ustawien_uslugi", slowa[1:]
+    if nazwa == "curl":
+        pisze = False
+        for k, a in enumerate(args):
+            if a in ("-d", "-F", "-T", "--json", "--upload-file", "--form", "--form-string") or a.startswith("--data") \
+                    or re.match(r"-[dFT].", a):
+                pisze = True
+            elif a.startswith("-X") or a.startswith("--request"):
+                metoda = a[2:] if a.startswith("-X") else a[10:]
+                metoda = metoda or (args[k + 1] if k + 1 < len(args) else "")
+                pisze = pisze or metoda.upper() not in ("GET", "HEAD", "OPTIONS")
+        if not pisze:
+            return None
+        adresy = [a for a in args if re.match(r"https?://|localhost|127\.0\.0\.1|\[::1\]", a) or a[:1] in ("$", ZNAK)]
+        return None if adresy and all(RE_LOKALNY.match(a) for a in adresy) else cz
+    if nazwa == "wget":
+        return cz if any(a.startswith(("--post", "--method", "--body")) for a in args) else None
+    if nazwa == "gh" and slowa_pozycyjne(slowa)[1:2] == ["api"]:
+        metoda, pola = None, False
+        for k, a in enumerate(args):
+            if a in ("-X", "--method"):
+                metoda = args[k + 1] if k + 1 < len(args) else ""
+            elif a.startswith("--method="):
+                metoda = a[9:]
+            elif a.startswith("-X"):
+                metoda = a[2:]
+            elif a in ("-f", "-F", "--field", "--raw-field", "--input") or re.match(r"-[fF].|--(raw-)?field=|--input=", a):
+                pola = True
+        if "graphql" in args:
+            return cz if re.search(r"\bmutation\b|=@", " ".join(args)) else None
+        if metoda:
+            return None if metoda.upper() in ("GET", "HEAD") else cz
+        return cz if pola else None
+    if kod and RE_HTTP_KOD.search(kod):
+        return cz
+    return None
+
+
+def czynnosc_sql(nazwa, slowa, pelny):
+    if nazwa in ("psql", "mysql", "sqlite3") or slowa[:3] == ["supabase", "db", "execute"]:
+        if RE_SQL_NISZCZY.search(pelny):
+            return "migracja_niszczaca_dane"
+        if RE_SQL_ZMIENIA.search(pelny):
+            return "migracja_zgodna_wstecz"
+    return None
+
+# ---------- ocena polecenia: każdy człon osobno, domyślnie odmowa ----------
+
+SPOZA = "spoza_listy"
+RE_PRZYPISANIE = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*)(\[[^\]]*\])?\+?=")
+RE_ZMIENNA = re.compile(r"\$(\w+)|\$\{(\w+)\}")
+RE_OPCJA_C = re.compile(r"^-[a-z]*c[a-z]*$")
+TYLKO_TEKST = {"echo", "printf", "grep", "egrep", "fgrep", "rg"}      # ich argumenty to treść, nie polecenie
+OPCJE_TRESCI = {"git": ("-m", "--message"), "gh": ("--body", "-b", "--title", "-t", "--notes", "-n")}
+# Kod podany interpreterowi (heredok albo -c/-e) to najczęściej edycja plików, a w niej cudze teksty: nazwy poleceń,
+# adresy, SQL. Wzorce czynności stosujemy do niego tylko wtedy, gdy sam kod (bez literałów) coś uruchamia albo łączy się z siecią.
+OPCJE_KODU = {"python": ("-c",), "node": ("-e", "-p", "--eval", "--print"), "deno": ("-e", "-p", "--eval", "--print"),
+              "bun": ("-e", "-p", "--eval", "--print"), "tsx": ("-e", "--eval"), "ts-node": ("-e", "--eval"),
+              "perl": ("-e", "-E"), "ruby": ("-e",), "php": ("-r",)}
+RE_LITERAL = re.compile(r"'''.*?'''|" r'""".*?"""|' r"'(?:\\.|[^'\\\n])*'|" r'"(?:\\.|[^"\\\n])*"|`[^`]*`', re.S)
+RE_URUCHAMIA = re.compile(r"\b(subprocess|os\.system|os\.popen|os\.exec\w*|os\.spawn\w*|child_process|execSync|spawnSync|execFile\w*|"
+                          r"spawn|popen|Deno\.Command|Bun\.spawn|pty|shutil\.rmtree)\b|(?<![.\w])(system|exec)\s*\(|\bqx\b")
+RE_SIEC = re.compile(r"\b(requests|httpx|urllib\w*|urlopen|aiohttp|http\.client|fetch|axios|https?\.request|XMLHttpRequest|socket|"
+                     r"LWP|Net::HTTP|curl_\w+)\b")
+
+
+def kod_interpretera(nazwa, slowa, hered):
+    """-> (słowa bez kodu z -c/-e, kod) dla interpretera; (słowa, None), gdy polecenie nim nie jest."""
+    klucz = "python" if nazwa.startswith("python") else nazwa
+    if klucz not in OPCJE_KODU:
+        return slowa, ("\n".join(hered) if nazwa in INTERPRETERY else None)
+    wyn, kod, k = [], list(hered), 0
+    while k < len(slowa):
+        if k and slowa[k] in OPCJE_KODU[klucz] and k + 1 < len(slowa):
+            kod.append(slowa[k + 1])
+            k += 2
+        else:
+            wyn.append(slowa[k])
+            k += 1
+    return wyn, "\n".join(kod)
+
+
+def _spoza(co):
+    return [("CZYNNOSC", SPOZA, co)]
+
+
+def sciezka_dozwolona(p, ctx):
+    """Program wskazany ścieżką: wolno skryptom z repo (ścieżka względna bez `..` albo wewnątrz repo) i wzorcom z [sciezki]."""
+    if "$" in p or ZNAK in p:
+        return False
+    q = os.path.expanduser(p)
+    for w in ctx["lista"]["sciezki"]:
+        if fnmatch.fnmatch(p, w) or fnmatch.fnmatch(q, os.path.expanduser(w)):
+            return True
+    if not os.path.isabs(q):
+        if ".." not in q.split("/"):
+            return True
+        q = os.path.join(str(ctx["cwd"]), q)
+    return w_katalogu(ctx["repo"], q) is not None
+
+
+def bez_opakowania(nazwa, slowa):
+    """Słowa po opakowaniu (env, timeout, xargs…) – z pominięciem jego opcji; None = samo zapytanie (command -v)."""
+    z_wartoscia, i, czas = OPAKOWANIA[nazwa], 1, nazwa in ("timeout", "gtimeout")
+    while i < len(slowa):
+        a = slowa[i]
+        if nazwa == "command" and a in ("-v", "-V"):
+            return None
+        if a in z_wartoscia:
+            i += 2
+        elif a.startswith("-") or (nazwa == "env" and RE_PRZYPISANIE.match(a)):
+            i += 1
+        elif czas:
+            czas, i = False, i + 1
+        else:
+            break
+    return slowa[i:]
+
+
+def tekstowe(nazwa, slowa, kod, ctx, wymaga_listy=True):
+    """Zakazy, czynności z uprawnienia.yaml, zapisy do plików chronionych i lista dozwolonych – dla jednego polecenia."""
+    wyn = [("CZYNNOSC", cz, " ".join(slowa)) for cz in mutacje(nazwa, slowa, ctx["repo"], ctx.get("katalogi") or ctx["cwd"])]
+    cz = None
+    if nazwa not in TYLKO_TEKST:
+        tresc, widoczne, pomin = OPCJE_TRESCI.get(nazwa, ()), [], False
+        for w in slowa:
+            if pomin:
+                pomin = False
+            elif w in tresc:
+                pomin = True
+            elif not any(w.startswith(o + "=") for o in tresc if o.startswith("--")):
+                widoczne.append(w)
+        kod_cz = kod_siec = kod
+        if kod and (nazwa.startswith("python") or nazwa in OPCJE_KODU):
+            goly = RE_LITERAL.sub("''", kod)
+            kod_cz = kod if RE_URUCHAMIA.search(goly) else ""
+            kod_siec = kod if RE_SIEC.search(goly) else ""
+        pelny = " ".join(widoczne) + ("\n" + kod_cz if kod_cz else "")
+        for wzor, opis in ZAKAZANE:
+            if re.search(wzor, pelny):
+                return [("ZAKAZANE", opis, pelny)]
+        for wzor, c in WZORCE_BASH:
+            if re.search(wzor, pelny, re.I):
+                cz = c
+                break
+        cz = cz or zapis_http(nazwa, slowa, kod_siec) or czynnosc_sql(nazwa, slowa, pelny)
+    if cz:
+        wyn.append(("CZYNNOSC", cz, " ".join(slowa)))
+        if nazwa in POLECENIA_CZYNNOSCI:
+            return wyn
+    if wymaga_listy and not na_liscie(ctx["lista"], slowa):
+        wyn += _spoza("polecenie „%s”" % " ".join(slowa_pozycyjne(slowa)[:2]))
+    return wyn
+
+
+def ocen_slowa(slowa, hered, funkcje, zmienne, ctx, glebia):
+    if glebia > 8:
+        return _spoza("polecenie zbyt głęboko zagnieżdżone")
+    pierwsze = RE_ZMIENNA.sub(lambda m: zmienne.get(m.group(1) or m.group(2), m.group(0)), slowa[0])
+    if pierwsze != slowa[0]:
+        slowa = pierwsze.split() + slowa[1:]
+        if not slowa:
+            return []
+    nazwa = slowa[0]
+    if "$" in nazwa or ZNAK in nazwa:
+        return _spoza("polecenie o nazwie ustalanej w trakcie wykonania")
+    if "/" in nazwa:
+        if nazwa.startswith(KATALOGI_SYSTEMOWE):
+            nazwa = os.path.basename(nazwa)
+            slowa = [nazwa] + slowa[1:]
+        elif sciezka_dozwolona(nazwa, ctx):
+            return tekstowe(nazwa, slowa, "", ctx, wymaga_listy=False)
+        else:
+            return _spoza("program „%s” spoza repo" % nazwa)
+    if nazwa in funkcje:
+        return []
+    if nazwa in ZAWSZE_ODMOWA:
+        return [("ZAKAZANE", "%s (podniesienie uprawnień albo wykonanie sklejonego tekstu)" % nazwa, " ".join(slowa))]
+    if nazwa in OPAKOWANIA:
+        reszta = bez_opakowania(nazwa, slowa)
+        return ocen_slowa(reszta, hered, funkcje, zmienne, ctx, glebia + 1) if reszta else []
+    wyn, args = [], slowa[1:]
+    if nazwa == "find":
+        k = 0
+        while k < len(args):
+            if args[k] in ("-exec", "-execdir", "-ok", "-okdir"):
+                j = k + 1
+                while j < len(args) and args[j] not in (";", "+"):
+                    j += 1
+                if args[k + 1:j]:
+                    wyn += ocen_slowa(args[k + 1:j], [], funkcje, zmienne, ctx, glebia + 1)
+                k = j
+            k += 1
+    elif nazwa in POWLOKI:
+        k, skrypt, kod_c = 0, None, None
+        while k < len(args):
+            a = args[k]
+            if RE_OPCJA_C.match(a):
+                kod_c = args[k + 1] if k + 1 < len(args) else ""
+                break
+            if a in ("-o", "+o", "-O", "+O"):
+                k += 1
+            elif not a.startswith(("-", "+")):
+                skrypt = a
+                break
+            k += 1
+        if kod_c is not None:
+            wyn += ocen_tekst(kod_c, ctx, glebia + 1, zmienne)
+        elif skrypt is not None:
+            if not sciezka_dozwolona(RE_ZMIENNA.sub(lambda m: zmienne.get(m.group(1) or m.group(2), m.group(0)), skrypt), ctx):
+                wyn += _spoza("skrypt „%s” spoza repo" % skrypt)
+        elif hered:
+            for h in hered:
+                wyn += ocen_tekst(h, ctx, glebia + 1, zmienne)
+        else:
+            wyn += _spoza("powłoka „%s” wykonująca polecenia z wejścia" % nazwa)
+    elif nazwa in ("source", "."):
+        if not args or not sciezka_dozwolona(args[0], ctx):
+            wyn += _spoza("skrypt „%s” spoza repo" % (args[0] if args else ""))
+    elif nazwa == "trap":
+        poz = [a for a in args if not a.startswith("-")]
+        if poz and poz[0].strip():
+            wyn += ocen_tekst(poz[0], ctx, glebia + 1, zmienne)
+    slowa, kod = kod_interpretera(nazwa, slowa, hered)
+    return wyn + tekstowe(nazwa, slowa, kod or "", ctx)
+
+
+def ocen_tekst(polecenie, ctx, glebia=0, zmienne=None):
+    """-> lista (rodzaj, czynność albo opis zakazu, szczegół); pusta = wolno."""
+    try:
+        segs, funkcje = rozbierz(polecenie)
+    except (Blad, RecursionError, IndexError) as e:
+        for wzor, opis in ZAKAZANE:
+            if re.search(wzor, polecenie):
+                return [("ZAKAZANE", opis, polecenie)]
+        return _spoza("polecenie, którego nie da się jednoznacznie rozebrać (%s)" % (str(e) or e.__class__.__name__))
+    zmienne = dict(zmienne if zmienne is not None else ctx["zmienne"])
+    wyn, poprz = [], None
+    for seg in segs:
+        hered = list(seg["heredoki"])
+        if poprz is not None and poprz["sep"] == "|":
+            hered += poprz["heredoki"]                      # cat <<EOF | bash
+        poprz = seg
+        for z in seg["zapis"]:
+            cz = chroniony(ctx["repo"], ctx.get("katalogi") or ctx["cwd"], z)
+            if cz:
+                wyn.append(("CZYNNOSC", cz, "zapis do " + z))
+        slowa = list(seg["slowa"])
+        while slowa:
+            m = RE_PRZYPISANIE.match(slowa[0])
+            if m:
+                v = slowa[0][m.end():]
+                if "$" in v or ZNAK in v:
+                    zmienne.pop(m.group(1), None)
+                else:
+                    zmienne[m.group(1)] = v
+            elif slowa[0] not in SLOWA_KLUCZOWE:
+                break
+            slowa.pop(0)
+        if not slowa:
+            continue
+        if slowa[0] in SLOWA_CALOSC:
+            if slowa[0] == "function" and len(slowa) > 1:
+                funkcje.add(slowa[1])
+            continue
+        if slowa[0] in ("cd", "pushd"):                     # ścieżki względne w dalszych członach liczą się od nowego katalogu
+            cel = next((a for a in slowa[1:] if not a.startswith("-")), "~")
+            cel = RE_ZMIENNA.sub(lambda m: zmienne.get(m.group(1) or m.group(2), m.group(0)), cel)
+            kat = ctx.setdefault("katalogi", [ctx["cwd"]])
+            if "$" in cel or ZNAK in cel or cel == "-":
+                kat.append(None)
+            else:
+                ctx["cwd"] = os.path.normpath(os.path.join(str(ctx["cwd"]), os.path.expanduser(cel)))
+                kat.append(ctx["cwd"])
+        wyn += ocen_slowa(slowa, hered, funkcje, zmienne, ctx, glebia)
+    return wyn
+
+
+def czynnosc_z_wejscia(narzedzie, wejscie, repo, cwd, lista):
+    """-> (lista (rodzaj: ZAKAZANE|CZYNNOSC, czynność/opis, szczegół), szczegół wywołania). Pusta lista = wolno."""
+    brak = lista is None
+    lista = lista or {"polecenia": [], "sciezki": [], "narzedzia": set(), "mcp": []}
+    if narzedzie == "Bash":
+        cmd = str(wejscie.get("command", ""))
+        ctx = {"repo": repo, "cwd": cwd or str(repo), "lista": lista,
+               "zmienne": {"HOME": os.path.expanduser("~"), "CLAUDE_PROJECT_DIR": str(repo), "PWD": cwd or str(repo)}}
+        wyn, widziane = [], set()
+        for a in sorted(ocen_tekst(cmd, ctx), key=lambda a: a[0] != "ZAKAZANE"):
+            if a[:2] not in widziane:
+                widziane.add(a[:2])
+                wyn.append(a)
+        return wyn, cmd
+    if narzedzie in NARZEDZIA_ODCZYTU:
+        return [], ""
+    if narzedzie.startswith("mcp__"):
+        for wzor, cz in WZORCE_MCP:
+            if re.search(wzor, narzedzie):
+                return [("CZYNNOSC", cz, narzedzie)], narzedzie
+        czesci = narzedzie.split("__", 2)
+        krotka = czesci[2] if len(czesci) == 3 else narzedzie
+        if any(fnmatch.fnmatch(krotka, w) or fnmatch.fnmatch(narzedzie, w) for w in lista["mcp"]):
+            return [], narzedzie
+        return _spoza("narzędzie MCP „%s”" % narzedzie), narzedzie
+    if narzedzie in NARZEDZIA_HARMONOGRAMU:
+        return [("CZYNNOSC", "nowy_agent_lub_zadanie_cykliczne", narzedzie)], narzedzie
+    if narzedzie in NARZEDZIA_ZAPISU:
+        p = str(wejscie.get("file_path") or wejscie.get("notebook_path") or "")
+        cz = chroniony(repo, cwd, p)
+        if cz:
+            return [("CZYNNOSC", cz, "zapis do " + p)], p
+        return ([] if narzedzie in lista["narzedzia"] else _spoza("narzędzie „%s”" % narzedzie)), p
+    if narzedzie in lista["narzedzia"]:
+        return [], ""
+    return _spoza("narzędzie „%s”%s" % (narzedzie, " (brak pliku %s)" % PLIK_LISTY if brak else "")), ""
 
 
 def kwota_z_wejscia(narzedzie, wejscie, szczegol):
@@ -367,23 +1159,45 @@ def petla(ogon, sesja, narzedzie, szczegol):
     return n
 
 
-# ---------- main ----------
+def znajdz_repo(dane):
+    """Repo organizacji: CLAUDE_PROJECT_DIR, potem położenie tego pliku (.claude/hooks/), na końcu katalog bieżący."""
+    kandydaci = [os.environ.get("CLAUDE_PROJECT_DIR")]
+    try:
+        kandydaci.append(str(Path(__file__).resolve().parents[2]))
+    except (IndexError, OSError):
+        pass
+    kandydaci += [dane.get("cwd"), "."]
+    for k in kandydaci:
+        if k:
+            repo = katalog_repo(k)
+            if repo is not None:
+                return repo
+    return None
+
 
 def main():
     try:
         dane = json.load(sys.stdin)
-    except ValueError:
-        return 0
-    narzedzie = dane.get("tool_name") or ""
-    wejscie = dane.get("tool_input") or {}
+        if not isinstance(dane, dict):
+            raise ValueError("wejście nie jest obiektem")
+    except ValueError:                                      # fail-closed: bez wejścia nie da się niczego ocenić
+        print("ZABLOKOWANE: hook uprawnień nie odczytał wejścia (niepoprawny JSON) – domyślnie odmowa.", file=sys.stderr)
+        return 2
+    narzedzie = str(dane.get("tool_name") or "")
+    wejscie = dane.get("tool_input") if isinstance(dane.get("tool_input"), dict) else {}
     faza = "post" if dane.get("hook_event_name") == "PostToolUse" else "pre"
-    repo = katalog_repo(dane.get("cwd") or os.environ.get("CLAUDE_PROJECT_DIR") or ".")
+    repo = znajdz_repo(dane)
     if repo is None:
-        return 0  # poza repo organizacji hook nie działa
+        if faza == "post" or narzedzie in NARZEDZIA_ODCZYTU:
+            return 0
+        print("ZABLOKOWANE: hook uprawnień nie znalazł repo organizacji (uprawnienia.yaml) – domyślnie odmowa; "
+              "przechodzą tylko narzędzia odczytu.", file=sys.stderr)
+        return 2
     teraz = datetime.now(timezone.utc)
     sesja = dane.get("session_id") or ""
     r = rola(repo)
-    rodzaj, co, szczegol = czynnosc_z_wejscia(narzedzie, wejscie)
+    akcje, szczegol = czynnosc_z_wejscia(narzedzie, wejscie, repo, dane.get("cwd") or str(repo), czytaj_liste(repo))
+    rodzaj, co = (akcje[0][0], akcje[0][1]) if akcje else ("WOLNO", "")
     wejscie_hash = hashlib.sha256((szczegol.strip() or json.dumps(wejscie, sort_keys=True, ensure_ascii=False)).encode("utf-8")).hexdigest()
     ogon = ogon_audytu(repo, teraz)
     rekord = {"czas": teraz.isoformat(timespec="seconds"), "faza": faza, "sesja": sesja, "agent_id": dane.get("agent_id"),
@@ -414,7 +1228,7 @@ def main():
         print("ZABLOKOWANE: to samo polecenie %d razy z rzędu – pętla. Zmień podejście albo zakończ przebieg z wynikiem BŁĄD (incydent #15909)." % n, file=sys.stderr)
         return 2
 
-    if rodzaj == "WOLNO":
+    if not akcje:
         rekord.update({"decyzja": "allow", "regula": "wolno"})
         zapisz_audyt(repo, teraz, rekord, ogon)
         return 0
@@ -423,34 +1237,38 @@ def main():
     typ = typ_agenta(repo, r)
     decyzja = decyzja_z_srodowiska(repo, szczegol if narzedzie == "Bash" else "")
     progi = czytaj_progi(repo)
-    lista = [co]                                            # polecenie złożone: każda czynność przechodzi własną kontrolę
-    if rodzaj == "CZYNNOSC" and narzedzie == "Bash":
-        lista += [c for c in czynnosci_bash(szczegol) if c != co]
     regula, kwota = "wolno", None
-    for i, cz in enumerate(lista):
+    for i, (rodz, cz, etykieta) in enumerate(akcje):       # polecenie złożone: każda czynność przechodzi własną kontrolę
         dalsza = "" if i == 0 else " (polecenie złożone – każda czynność jest sprawdzana osobno)"
-        if typ in ("reader", "researcher") and cz in CZYNNOSCI_ACTOR and not (typ == "reader" and cz == "wysylka_maila" and r in uprawnienia.get("wysylka_maila", {}).get("sam", [])):
+        if rodz == "CZYNNOSC" and typ in ("reader", "researcher") and cz in CZYNNOSCI_ACTOR and not (
+                typ == "reader" and cz == "wysylka_maila" and r in uprawnienia.get("wysylka_maila", {}).get("sam", [])):
             rekord.update({"decyzja": "deny", "regula": "regula-dwoch:" + typ})
             zapisz_audyt(repo, teraz, rekord, ogon)
             zapisz_blokade(repo, r, narzedzie, cz, szczegol)
             print("ZABLOKOWANE (reguła dwóch): agent typu %s (czyta niezaufane treści / tylko jawne źródła) nie wykonuje „%s” – zleć agentowi typu actor (zlecenia/README.md).%s" % (typ, cz, dalsza), file=sys.stderr)
             return 2
         u = uprawnienia.get(cz, {})
-        kw = kwota_z_wejscia(narzedzie, wejscie, szczegol) if u.get("bramka") == "kwota" else None
-        czy_cz = rodzaj == "CZYNNOSC"
-        bramka_pr = bramka_scalania(repo, szczegol, r, decyzja) if u.get("bramka") == "pr" and czy_cz else None
-        wolno, komunikat, reg = decyduj(rodzaj if i == 0 else "CZYNNOSC", cz, uprawnienia, r, decyzja, kw, progi, bramka_pr)
+        czy_cz = rodz == "CZYNNOSC"
+        kw = kwota_z_wejscia(narzedzie, wejscie, szczegol) if czy_cz and u.get("bramka") == "kwota" else None
+        bramka_pr = bramka_scalania(repo, szczegol, r, decyzja) if czy_cz and u.get("bramka") == "pr" else None
+        wolno, komunikat, reg = decyduj(rodz, cz, uprawnienia, r, decyzja, kw, progi, bramka_pr)
         if i == 0:
             regula, kwota = reg, kw
         if not wolno:
+            if cz == SPOZA:
+                komunikat = ("ZABLOKOWANE: %s nie jest na liście dozwolonych (%s) – domyślnie odmowa. Jeśli jest potrzebne: zgłoś CEO; "
+                             "właściciel dopisuje je do listy (zmiana przez PR) albo wydaje decyzję: DECYZJA=D-… <polecenie>."
+                             % (etykieta, PLIK_LISTY))
+            elif cz in (ZASADY, "zapis_decyzji"):
+                komunikat += " Dotyczy: %s." % etykieta[:160]
             rekord.update({"decyzja": "deny", "regula": reg, "decyzja_id": decyzja, "kwota_usd": kw})
             zapisz_audyt(repo, teraz, rekord, ogon)
             zapisz_blokade(repo, r, narzedzie, cz, szczegol)
             print(komunikat + dalsza, file=sys.stderr)
             return 2
     rekord.update({"decyzja": "allow", "regula": regula, "decyzja_id": decyzja, "kwota_usd": kwota})
-    if len(lista) > 1:
-        rekord["czynnosci"] = lista
+    if len(akcje) > 1:
+        rekord["czynnosci"] = [a[1] for a in akcje]
     zapisz_audyt(repo, teraz, rekord, ogon)
     return 0
 

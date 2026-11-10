@@ -33,6 +33,9 @@ python3 flota/generuj.py --konto B --wyjscie ~/<prefiks>-prompty-b    # prompty 
 - Każda linia JSON = jedno zadanie (`taskId` `<prefiks>-<agent>-<konto>`, cron, description, prompt z pliku). **Kolejność z listy**
   (najpierw `<prefiks>-limit-<konto>` – regulator tempa).
 - Po utworzeniu: „Uruchom teraz” dla recenzenta, obsługi i PM; sprawdź tryb każdego zadania.
+- **Model zadania** ustawiasz w zadaniu (pole modelu w wywołaniu z listy albo `model:` we frontmatterze jego `SKILL.md`).
+  Klucz `"model"` w `settings.local.json` nie działa dla zadań zaplanowanych w aplikacji desktop – sprawdź model w nagłówku
+  pierwszego przebiegu. Modele o osobnym limicie tygodniowym rezerwuj dla zadań, które ich wymagają.
 - Przy przeniesieniu floty stare konto **wyłącza** zadania (nie kasuje); konto floty w `org.yaml → runtime.konto`.
 - `scripts/przebieg.sh start <agent> <konto>` przyjmuje każdą literę A–Z; plik limitu `~/.<prefiks>-limit-<K>.json`.
 

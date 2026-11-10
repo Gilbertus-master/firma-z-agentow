@@ -2,6 +2,7 @@
 # „(start)” = pierwsza propozycja: korekta po 2 tygodniach pomiaru (kontrola H-03), każda zmiana → wiersz w ceo/wiedza/zmiany-instrukcji.md.
 # Format: płaskie `klucz: liczba` (skrypt czyta bez PyYAML). Progu, którego tu nie ma, nie wolno wpisywać w treść kontroli.
 limit_kontroli: 90                # powyżej: najpierw usuń kontrolę bez niezaliczenia przez 4 tygodnie, która nie strzeże wymogu prawnego (§)
+zagrozone_h: 2                    # A-13 – zlecenie z terminem w ciągu tylu godzin jest „zagrożone” i idzie przed inną pracą
 decyzja_wlasciciela_h: 48         # A-03, KPI K12 – sprawa u właściciela starsza niż tyle godzin wymaga pakietu „5 minut właściciela”
 decyzje_wlasciciela_max: 5        # A-03 (start) – ile spraw starszych niż próg może czekać jednocześnie
 operator_sla_h: 24                # A-11 – gdy org.yaml → ludzie.operator.sla_godziny nie jest ustawione

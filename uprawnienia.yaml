@@ -2,7 +2,9 @@
 # Poziomy: sam (agent wykonuje i raportuje) | ceo (agent CEO zatwierdza, wpis „[Decyzja CEO]”) |
 #          wlasciciel (decyzja D-… w decyzje.md z czatu) | operator (wykonuje człowiek – operator/kolejka.md) | nigdy
 # Brak czynności na liście = wlasciciel. Rozszerzenie listy = decyzja właściciela.
-# EGZEKWOWANIE: hook .claude/hooks/uprawnienia.py blokuje narzędzia (Bash, MCP) niezgodne z tą tabelą, zanim się wykonają.
+# EGZEKWOWANIE: hook .claude/hooks/uprawnienia.py blokuje narzędzia (Bash, MCP, zapis plików) niezgodne z tą tabelą, zanim się wykonają.
+#   Blokowanie jest DOMYŚLNE: polecenie albo narzędzie spoza dozwolone-polecenia.txt = czynność `spoza_listy`.
+#   To barierka, nie piaskownica – interpreter z listy wykona dowolny kod (README, „Czego hook nie robi”).
 #   sam → agent z listy `agenci` (pusta = każdy) · ceo → rola ceo albo DECYZJA=D-… (z ID decyzji istniejącej w decyzje.md)
 #   · wlasciciel → tylko z DECYZJA=D-… · operator → wykonuje człowiek, agent nigdy · nigdy → nic nie pomaga.
 #   `agenci` = kto wykonuje czynność na tym poziomie; `sam: [...]` = role, które robią to samodzielnie mimo wyższego poziomu.
@@ -45,4 +47,6 @@ czynnosci:
   zlecenie_innemu_agentowi:             { poziom: sam }
   nowy_agent_lub_zadanie_cykliczne:     { poziom: ceo,        warunki: "wiersz w backlog.md (PM), koszt w flota/zadania.yaml" }
   zmiana_zasad_lub_uprawnien:           { poziom: wlasciciel }
+  zapis_decyzji:                        { poziom: ceo,        warunki: "decyzje/ i decyzje.md zapisuje CEO (decyzję wydaje właściciel na czacie); inna rola – z DECYZJA=D-…" }
+  spoza_listy:                          { poziom: wlasciciel, warunki: "polecenie albo narzędzie spoza dozwolone-polecenia.txt – hook blokuje domyślnie; dopisanie do listy przez PR" }
   kasowanie_danych_osobowych:           { poziom: wlasciciel }

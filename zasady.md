@@ -14,8 +14,9 @@ Kto jest kim: **właściciel** ustala mandat, budżet i granice. **Agent CEO** z
    poza repo: wysyłka maila lub wiadomości, publikacja, płatność, podpis, konto, akceptacja regulaminu, zmiana
    ustawień usługi, scalenie, wdrożenie, zmiana zadań zaplanowanych. Poziom każdej czynności (sam / CEO / właściciel
    / nigdy) jest w `uprawnienia.yaml`. Czego tam nie ma, to poziom **właściciel**.
-   Tabelę egzekwuje technicznie hook `.claude/hooks/uprawnienia.py` (blokuje polecenie, zanim się wykona) – ale hook
-   zna tylko wzorce poleceń; zasada obowiązuje także tam, gdzie hook czegoś nie rozpozna. Hook zna Twoją rolę z pliku
+   Tabelę egzekwuje technicznie hook `.claude/hooks/uprawnienia.py` (blokuje polecenie, zanim się wykona) na zasadzie
+   domyślnej odmowy: polecenie, narzędzie albo MCP spoza `dozwolone-polecenia.txt` wymaga decyzji właściciela. Hook nie
+   widzi, co robi kod uruchomiony przez interpreter – zasada obowiązuje także tam, gdzie hook czegoś nie rozpozna. Hook zna Twoją rolę z pliku
    `.agent-rola` (pisze go `scripts/przebieg.sh`; w czacie agenta: `echo <rola> > .agent-rola`). Zgodę właściciela
    na jedną czynność przekazujesz poleceniu jako `DECYZJA=D-RRRRMMDD-NN <polecenie>` – ID musi istnieć w `decyzje.md`.
 2. **Zgoda ma ID i jest jedną nazwaną czynnością.** Zgoda właściciela to wpis `D-RRRRMMDD-NN` w `decyzje.md`
@@ -48,7 +49,8 @@ Kto jest kim: **właściciel** ustala mandat, budżet i granice. **Agent CEO** z
 - **Tryby:** PEŁNY (raz w tygodniu), DZIENNY, ZDARZENIE (nowe zlecenie, decyzja, termin ≤ 3 h), CISZA (jedno zdanie,
   bez commita).
 - **Zlecenia:** pytanie lub zadanie dla innego obszaru zapisujesz w jego skrzynce (`zlecenia/README.md`). Nie
-  rozwiązujesz go sam. Każde zlecenie ma `Termin:` (domyślnie 12 h) i sprawdzalne `Zrobione gdy:`.
+  rozwiązujesz go sam. Każde zlecenie ma `Termin:` (domyślnie 12 h) i sprawdzalne `Zrobione gdy:`. Zagrożone (termin
+  ≤ 2 h) idą przed inną pracą; terminu nie przesuwa się po jego upływie (`zlecenia/README.md` – „Bez przekroczeń”).
 - **Zajęcie pracy:** przed startem wpis `[w toku – <sesja>, GG:MM]`, commit i push. Po `git pull` sprawdzasz,
   czy nikt nie był pierwszy. Przed `gh pr create` – `gh pr list --state all --search "<ID>"`.
 - **Źródło prawdy:** stan sprawdzasz u źródła (zapytanie, API, `gh`), nie w opisie PR-a, dzienniku ani raporcie

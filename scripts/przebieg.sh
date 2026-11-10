@@ -140,7 +140,7 @@ if [ -n "$budzet_mies" ] && ls "$koszty_kat"/koszty-"$miesiac"-*.jsonl >/dev/nul
 fi
 
 # Regulator tempa (scripts/regulator.py): z pliku limitu `tryb` i `odchylenie` (pp względem celu równego zużycia okna).
-# „zwolnij” → P3 nie pracuje; „zwolnij” i odchylenie > +15 pp → także P2. Tryb starszy niż 2 h (`sprawdzono`) jest pomijany.
+# „zwolnij” → P3 nie pracuje; „zwolnij” i odchylenie > +15 pp → także P2 (chyba że ma zlecenie z terminem ≤ 2 h). Tryb starszy niż 2 h (`sprawdzono`) jest pomijany.
 tryb_reg=$(sed -n 's/.*"tryb"[[:space:]]*:[[:space:]]*"\([a-z]*\)".*/\1/p' "$limit_plik" 2>/dev/null | head -n 1)
 odchylenie=$(sed -n 's/.*"odchylenie"[[:space:]]*:[[:space:]]*\(-\{0,1\}[0-9][0-9.]*\).*/\1/p' "$limit_plik" 2>/dev/null | head -n 1)
 spr=$(sed -n 's/.*"sprawdzono"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$limit_plik" 2>/dev/null | head -n 1)
@@ -152,6 +152,27 @@ if [ "$tryb_reg" = zwolnij ] && [ -n "$priorytet" ] && [ -n "$spr_epoka" ] && [ 
     P3) hamuj=1 ;;
     P2) awk -v o="${odchylenie:-0}" 'BEGIN { exit !(o > 15) }' && hamuj=1 ;;
   esac
+  # Wyjątek: P2 z otwartym zleceniem, którego termin mija w ciągu 2 h (zlecenia/<agent>.md), pracuje mimo hamulca –
+  # inaczej regulator zamienia oszczędzanie limitu w przekroczone terminy (kontrola A-13).
+  if [ "$hamuj" = 1 ] && [ "$priorytet" = P2 ] && [ -f "$repo/zlecenia/$agent.md" ]; then
+    zagrozone=$(TZ=$STREFA python3 -I - "$repo/zlecenia/$agent.md" "$teraz" <<'PY' 2>/dev/null
+import re, sys, datetime as d
+teraz, otwarte, n = int(sys.argv[2]), False, 0
+for l in open(sys.argv[1], encoding="utf-8"):
+    if l.startswith("## "):
+        otwarte = not l.startswith("## [zrobione")
+    elif otwarte and l.startswith("Termin:"):
+        daty = re.findall(r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}", l)
+        if daty and 0 <= d.datetime.strptime(daty[-1], "%Y-%m-%d %H:%M").timestamp() - teraz <= 7200:
+            n += 1
+print(n)
+PY
+)
+    if [ "${zagrozone:-0}" -gt 0 ]; then
+      hamuj=0
+      echo "REGULATOR: konto $konto w trybie zwolnij, ale $agent ma $zagrozone zlecenie(-a) z terminem ≤ 2 h – pracuje tylko nad nimi."
+    fi
+  fi
   if [ "$hamuj" = 1 ]; then
     echo "BUDŻET: regulator tempa – konto $konto w trybie zwolnij (odchylenie +${odchylenie#+} pp od celu) – agent $agent ($priorytet) w tym okienku nie pracuje – koniec bez pracy."
     exit 10

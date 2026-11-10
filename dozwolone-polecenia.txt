@@ -1,0 +1,350 @@
+# Lista dozwolonych poleceń i narzędzi – hook uprawnień blokuje DOMYŚLNIE wszystko, czego tu nie ma.
+#
+# Jak to działa (.claude/hooks/uprawnienia.py):
+#   - polecenie Bash jest rozbierane na człony (;  &&  ||  |  $(…)  `…`  podpowłoki, bash -c '…', find -exec, xargs)
+#     i KAŻDY człon musi zaczynać się od wpisu z sekcji [polecenia];
+#   - wpis to nazwa polecenia albo nazwa z podpoleceniem („gh pr view” wpuszcza gh pr view, ale nie gh pr merge);
+#   - czynności z uprawnienia.yaml (scalenie PR-a, wdrożenie, wysyłka, zapis przez HTTP…) mają własne poziomy
+#     i idą swoją ścieżką – wpis tutaj ich nie odblokowuje;
+#   - zakazy bezwzględne z zasady.md (git reset --hard, sudo, eval…) działają niezależnie od tej listy;
+#   - polecenie spoza listy = czynność „spoza_listy” (poziom: właściciel) – przechodzi tylko z zaakceptowaną decyzją
+#     (DECYZJA=D-RRRRMMDD-NN <polecenie>) albo po dopisaniu tutaj.
+#
+# Zmiana tej listy to „zmiana_zasad_lub_uprawnien”: tylko właściciel, przez PR. Agent nie dopisuje sobie poleceń sam.
+# To jest barierka, nie piaskownica: interpreter z listy (python3, node, bash skrypt.sh) wykona dowolny kod,
+# który dostanie. Im krótsza lista, tym mocniejsza barierka – usuń, czego Twoja organizacja nie używa.
+
+[polecenia]
+# --- wbudowane w powłokę (bez skutków poza procesem) ---
+echo
+printf
+cd
+pwd
+pushd
+popd
+export
+local
+declare
+typeset
+readonly
+set
+unset
+shopt
+setopt
+read
+mapfile
+test
+[
+true
+false
+:
+exit
+return
+break
+continue
+wait
+shift
+let
+type
+which
+hash
+alias
+umask
+ulimit
+getopts
+source
+.
+trap
+kill
+pkill
+killall
+jobs
+disown
+fg
+bg
+sleep
+
+# --- czytanie i przetwarzanie tekstu ---
+cat
+head
+tail
+less
+grep
+egrep
+fgrep
+rg
+sed
+awk
+cut
+tr
+sort
+uniq
+wc
+nl
+tac
+rev
+paste
+join
+comm
+column
+fold
+expand
+diff
+cmp
+patch
+jq
+yq
+xxd
+od
+hexdump
+strings
+base64
+shasum
+sha256sum
+md5
+md5sum
+cksum
+iconv
+envsubst
+xmllint
+plutil
+pdftotext
+pdftoppm
+textutil
+cloc
+seq
+expr
+bc
+tee
+xargs
+
+# --- pliki i katalogi ---
+ls
+tree
+find
+fd
+stat
+file
+du
+df
+realpath
+readlink
+basename
+dirname
+mkdir
+mktemp
+touch
+cp
+mv
+rm
+rmdir
+ln
+chmod
+tar
+zip
+unzip
+gzip
+gunzip
+zcat
+open
+pbcopy
+pbpaste
+mdfind
+mdls
+
+# --- system (odczyt) ---
+date
+cal
+uname
+hostname
+whoami
+id
+env
+printenv
+ps
+pgrep
+lsof
+uptime
+sw_vers
+nproc
+sysctl
+locale
+tput
+clear
+man
+
+# --- git (zakazy z zasady.md i tak obowiązują: reset --hard, stash, clean, push --force, add -A, branch -D) ---
+git
+
+# --- GitHub CLI: odczyt i zwykła praca nad PR-ami ---
+# gh pr merge / gh pr create / gh release create / gh secret set / gh repo edit to czynności z uprawnienia.yaml.
+# gh api: odczyt (GET) przechodzi; każdy zapis (-X POST/PUT/PATCH/DELETE, -f/-F, mutacja GraphQL) to zmiana_ustawien_uslugi.
+gh pr view
+gh pr list
+gh pr diff
+gh pr checks
+gh pr status
+gh pr comment
+gh pr edit
+gh pr ready
+gh pr review
+gh pr close
+gh pr reopen
+gh pr checkout
+gh pr update-branch
+gh issue
+gh run
+gh workflow view
+gh workflow list
+gh api
+gh repo view
+gh repo list
+gh repo clone
+gh auth status
+gh search
+gh label
+gh release view
+gh release list
+gh release download
+gh secret list
+gh variable list
+gh status
+gh browse
+gh --version
+gh version
+
+# --- sieć ---
+# curl: pobranie (GET) przechodzi; zapis (-d, -F, -T, -X POST/PUT/PATCH/DELETE) do adresu innego niż lokalny
+# to zmiana_ustawien_uslugi. `curl … | sh` jest blokowane zawsze (powłoka wykonująca wejście).
+curl
+dig
+nslookup
+host
+ping
+nc
+whois
+openssl
+
+# --- interpretery (wykonują dowolny kod – patrz uwaga na górze) ---
+python3
+python
+node
+bash
+sh
+zsh
+perl
+
+# --- narzędzia programisty: USUŃ te, których nie używasz ---
+npm
+npx
+pnpm
+yarn
+bun
+deno
+pip
+pip3
+uv
+make
+tsc
+eslint
+prettier
+pytest
+ruff
+black
+mypy
+shellcheck
+sqlite3
+supabase status
+supabase start
+supabase stop
+supabase db diff
+supabase db lint
+supabase db reset
+supabase migration list
+supabase migration new
+supabase gen
+supabase --version
+supabase projects list
+supabase migration repair
+supabase functions list
+supabase secrets list
+supabase backups list
+docker ps
+docker info
+docker version
+docker logs
+docker images
+docker compose ps
+docker compose logs
+
+# --- obrazy i podgląd (zrzuty ekranu, grafiki sklepowe) ---
+sips
+cwebp
+dwebp
+webpinfo
+magick
+qlmanage
+
+# --- sekrety: odczyt z pęku kluczy wewnątrz polecenia (toolbelt/sekrety.md); wartość nie może trafić do pliku ani logu ---
+security find-generic-password
+# gh auth token
+
+# --- narzędzia platformowe: odkomentuj, jeśli budujesz aplikacje natywne albo zarządzasz maszyną ---
+# swift
+# swiftc
+# xcodebuild
+# xcrun
+# brew
+# launchctl
+# docker exec
+# docker run
+# claude
+
+# --- zdalny dostęp: domyślnie WYŁĄCZONY (ssh/scp na host produkcyjny to wdrozenie_produkcja) ---
+# ssh
+# scp
+# rsync
+
+[sciezki]
+# Programy uruchamiane ścieżką. Skrypty z repo (ścieżka względna albo wewnątrz repo) przechodzą bez wpisu.
+# Wzorce jak w powłoce (*, ?; gwiazdka obejmuje też podkatalogi).
+# Katalogi tymczasowe: agent pisze tam skrypty pomocnicze i je uruchamia – to nie daje mu więcej niż skrypt w repo.
+/tmp/*
+/private/tmp/*
+/var/folders/*
+# Skrypty zainstalowanych skilli i wtyczek:
+~/.claude/skills/*
+~/.claude/plugins/*
+# Przykłady do odkomentowania:
+# ~/.local/bin/*
+# /opt/homebrew/opt/*/bin/*
+
+[narzedzia]
+# Narzędzia agenta inne niż Bash i MCP. Narzędzia odczytu (Read, Glob, Grep, WebFetch, WebSearch…) są dozwolone zawsze.
+# Zapis do plików sterujących (zasady.md, uprawnienia.yaml, ta lista, .claude/hooks/, audyt) wymaga decyzji właściciela
+# niezależnie od tego wpisu.
+Write Edit MultiEdit NotebookEdit
+TodoWrite Task Agent BashOutput KillShell
+TaskCreate TaskUpdate TaskStop TaskOutput
+Skill SlashCommand ExitPlanMode EnterPlanMode AskUserQuestion
+SendMessage ListAgents ScheduleWakeup Monitor ReadNotifications
+Artifact SendUserFile Workflow EnterWorktree ExitWorktree
+PushNotification StructuredOutput ListMcpResourcesTool ReadMcpResourceTool
+
+[mcp]
+# Narzędzia MCP: wzorzec dopasowuje się do nazwy narzędzia (część po mcp__<serwer>__) albo do pełnej nazwy.
+# Wysyłka, kasowanie, migracje, wdrożenia mają własne poziomy w uprawnienia.yaml – wzorzec ich nie odblokowuje.
+# Odczyt:
+list*
+get*
+search*
+read*
+query*
+find*
+fetch*
+describe*
+view*
+# Sterowanie samą sesją i widokiem (usuń, jeśli nie używasz):
+mcp__ccd_turn__*
+mcp__visualize__*
+mcp__Claude_Browser__*
