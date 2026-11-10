@@ -10,7 +10,7 @@
       "name": "firma-z-agentow",
       "source": "./plugins/firma-z-agentow",
       "description": "Organizacja agentyczna: skille do prowadzenia floty agentów Claude Code jak firmy – nowa organizacja, przebieg, dyżur PM, recenzja, incydent.",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "license": "Apache-2.0"
     }
   ]
