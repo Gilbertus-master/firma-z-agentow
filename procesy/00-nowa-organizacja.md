@@ -12,8 +12,9 @@ incydentach. Tu są od pierwszego dnia.
 1. **[właściciel]** Teza biznesowa na 1 stronę: co, dla kogo, model przychodu, czego nie robimy.
 2. Skopiuj szablon: `gh repo create OWNER/<firma>-agenci --private --template Gilbertus-master/firma-z-agentow`
    i sklonuj do `~/projekty/<firma>-agenci`.
-3. **Jedno polecenie:** `scripts/init-org.sh --nazwa "…" --domena … --prefiks … --github OWNER/<firma>-agenci --operator …`
-   – wypełnia `org.yaml`, wpisuje decyzję startową `D-…-01`, tworzy agentów rdzenia (ceo, pm, recenzent), zakłada
+3. **Jedno polecenie:** `scripts/init-org.sh --nazwa "…" --domena … --prefiks … --github OWNER/<firma>-agenci --operator … --dziel-sie tak|nie`
+   – wypełnia `org.yaml`, wpisuje decyzję startową `D-…-01` (razem z obowiązkowym wyborem właściciela, czy flota dzieli się
+   ulepszeniami z szablonem – bez `--dziel-sie` skrypt niczego nie zapisuje), tworzy agentów rdzenia (ceo, pm, recenzent), zakłada
    etykiety Issues, generuje prompty, uruchamia testy i wypisuje listę zadań do założenia oraz kroki dla operatora.
    Ręcznie dopisz w `org.yaml` mandat, budżet i próg zgody.
 4. Przejrzyj `uprawnienia.yaml` – startowo ostrożnie.

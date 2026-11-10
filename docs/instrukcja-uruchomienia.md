@@ -35,13 +35,14 @@ Po wyczerpaniu tygodniowego limitu miejsca flota pracuje dalej tylko na płatnej
 gh repo create <OWNER>/<firma>-agenci --private --template Gilbertus-master/firma-z-agentow --clone
 cd <firma>-agenci
 scripts/init-org.sh --nazwa "Nowa Firma" --domena nowafirma.example --prefiks nf \
-  --github <OWNER>/<firma>-agenci --operator operator@nowafirma.example --runtime claude-routines   # albo desktop-scheduled / agent-sdk
+  --github <OWNER>/<firma>-agenci --operator operator@nowafirma.example --runtime claude-routines \
+  --dziel-sie nie                 # albo desktop-scheduled / agent-sdk; --dziel-sie tak|nie: obowiązkowy wybór właściciela
 # org.yaml → runtime: rozliczenie, konto, cena_planu_usd_miesiac, nadwyzka_usd_miesiac; repo: szablon, skrzynka_propozycji
 python3 flota/generuj.py        # prompty i budżety agentów (flota/budzety.tsv)
 git add -A && git commit -m "start organizacji Nowa Firma" && git push
 gh secret set STRAZNIK_TOKEN    # token fine-grained: odczyt PR-ów repo produktu, zapis repo organizacji
 ```
-Wynik `init-org.sh`: `org.yaml`, decyzja startowa `D-<dziś>-01`, agenci rdzenia (ceo, pm, recenzent), etykiety Issues, prompty,
+Wynik `init-org.sh`: `org.yaml`, decyzja startowa `D-<dziś>-01` (z zapisanym wyborem dzielenia się ulepszeniami), agenci rdzenia (ceo, pm, recenzent), etykiety Issues, prompty,
 testy ✓ i lista zadań do założenia. Strażnik rusza sam w GitHub Actions co 15 min.
 
 ## 4. Flota na koncie floty

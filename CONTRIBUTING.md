@@ -3,7 +3,7 @@
 Dziękujemy za ulepszanie rdzenia. Są dwie drogi:
 
 1. **Automatycznie, z działającej floty** – jeśli właściciel firmy włączył dzielenie się (README, „Dzielenie się
-   ulepszeniami”; domyślnie wyłączone). Wtedy w każdy poniedziałek architekt uruchamia `scripts/propozycje.py` i zakłada tutaj
+   ulepszeniami”; wybór właściciela przy `scripts/init-org.sh --dziel-sie tak|nie`). Wtedy w każdy poniedziałek architekt uruchamia `scripts/propozycje.py` i zakłada tutaj
    Issue ze zmianami mechanizmów i sprawdzonymi regułami. Zgłoszenie jest wkładem w rozumieniu sekcji 5 licencji Apache-2.0
    i zawiera oświadczenie o zgodzie właściciela oraz o zgodności z Developer Certificate of Origin 1.1.
 2. **Ręcznie.** Załóż Issue (szablon „Propozycja ulepszenia”) albo pull request.

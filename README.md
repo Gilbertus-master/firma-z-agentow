@@ -41,7 +41,8 @@ polityki firmy i procesy biznesowe.
 gh repo create <ty>/<firma>-agenci --private --template Gilbertus-master/firma-z-agentow --clone
 cd <firma>-agenci
 scripts/init-org.sh --nazwa "Nowa Firma" --domena nowafirma.example --prefiks nf \
-  --github <ty>/<firma>-agenci --operator operator@nowafirma.example --runtime claude-routines
+  --github <ty>/<firma>-agenci --operator operator@nowafirma.example --runtime claude-routines \
+  --dziel-sie nie          # obowiązkowy, jawny wybór: tak albo nie – patrz „Dzielenie się ulepszeniami”
 python3 flota/generuj.py
 bash scripts/testy.sh
 ```
@@ -57,13 +58,15 @@ Skille rdzenia są też paczką wtyczki (`plugins/`, opis: `plugins/<nazwa>/READ
 gdzie `<nazwa>` to nazwa tego repozytorium. Skill `nowa-organizacja` zakłada repo firmy i prowadzi przez pierwsze uruchomienie.
 Wtyczka nie zawiera hooków ani uprawnień – zabezpieczenia floty działają w repo firmy.
 
-## Dzielenie się ulepszeniami – domyślnie WYŁĄCZONE
+## Dzielenie się ulepszeniami – jawny wybór właściciela
 Ten projekt może uczyć się od flot, które z niego korzystają – ale tylko wtedy, gdy właściciel firmy świadomie to włączy.
-Dopóki tego nie zrobisz, nic nie wychodzi z Twojego repozytorium.
+`scripts/init-org.sh` nie ma tu wartości domyślnej: wymaga `--dziel-sie tak` albo `--dziel-sie nie` (w terminalu pyta) i
+zapisuje wybór w `org.yaml` oraz w decyzji startowej. Przy „nie” – i w repozytorium, w którym nie uruchomiono jeszcze
+`init-org.sh` – nic nie wychodzi z Twojego repozytorium.
 
 | | |
 |---|---|
-| **Włączenie** | Decyzja właściciela zapisana w `decyzje/`, potem w `org.yaml`: `repo.dziel_sie_ulepszeniami: true` i `repo.dziel_sie_decyzja: "D-…"` (identyfikator tej decyzji). Bez identyfikatora decyzji skrypt nie wyśle niczego do tego repozytorium. |
+| **Włączenie** | Przy zakładaniu firmy: `scripts/init-org.sh … --dziel-sie tak` (wybór trafia do decyzji startowej `D-…-01` i do `org.yaml`). Później: decyzja właściciela zapisana w `decyzje/`, potem w `org.yaml`: `repo.dziel_sie_ulepszeniami: true` i `repo.dziel_sie_decyzja: "D-…"` (identyfikator tej decyzji). Bez identyfikatora decyzji skrypt nie wyśle niczego do tego repozytorium. |
 | **Co może zostać wysłane** | Twoje zmiany w plikach *mechanizmów* względem wersji szablonu: `scripts/`, `.claude/skills/`, `.claude/hooks/`, `procesy/`, `role/`, `ewaluacje/`, `moduly/`, `flota/szablony/`, `flota/generuj.py`, `pm/narzedzia/`, `pm/specyfikacje/`, `recenzent/skrypty/`, `toolbelt/katalog.md`, `.github/workflows/` – oraz reguły z podręczników agentów, które pomogły co najmniej 3 razy i ani razu nie zaszkodziły (sam tekst reguły). |
 | **Czego mechanizm nie zbiera** | Plików spoza powyższej listy: `org.yaml`, polityk, decyzji, zleceń, dzienników przebiegów, danych klientów i finansowych. Jeśli jednak taka treść znajdzie się w pliku z listy (na przykład w skrypcie albo w opisie roli), zostanie zebrana – dlatego jest bramka i podgląd. |
 | **Bramka** | Przed wysyłką `scripts/propozycje.py sprawdz` odrzuca zgłoszenie, w którym znajdzie nazwę firmy, domenę, właściciela na GitHubie, adres kontaktowy, adresy e-mail, numery telefonów, PESEL, NIP, numer konta albo sekret. Bramka działa na wzorcach i nie rozpozna każdej poufnej treści. |

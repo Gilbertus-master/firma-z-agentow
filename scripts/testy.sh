@@ -15,6 +15,7 @@ TESTY=(
   "flota: manifest, generator, archiwizacja|python3 -m unittest discover flota"
   "straznik: kontrole bez LLM|python3 -m unittest discover moduly/straznik"
   "przebieg: blokada, okienka, CISZA|bash scripts/test-przebieg.sh"
+  "init-org: jawny wybór dzielenia się ulepszeniami|bash scripts/test-init-org.sh"
   "propozycje: zgłoszenia ulepszeń do szablonu|python3 -m unittest discover -s scripts -p 'test_propozycje.py'"
   "koszt: pomiar kosztu przebiegu|python3 -m unittest discover -s scripts -p 'test_koszt.py'"
   "regulator: tempo i limit konta floty|python3 -m unittest discover -s scripts -p 'test_regulator.py'"

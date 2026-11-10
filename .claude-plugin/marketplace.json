@@ -2,7 +2,7 @@
   "name": "firma-z-agentow",
   "description": "Organizacja agentyczna: skille do prowadzenia floty agentów Claude Code jak firmy – nowa organizacja, przebieg, dyżur PM, recenzja, incydent.",
   "owner": {
-    "name": "The Agentic Organization authors",
+    "name": "Sebastian Jablonski",
     "url": "https://github.com/Gilbertus-master/firma-z-agentow"
   },
   "plugins": [
