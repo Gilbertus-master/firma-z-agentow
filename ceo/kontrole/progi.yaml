@@ -12,6 +12,7 @@ pozycja_bez_ruchu_h: 48           # A-07 – „w toku” bez commita, PR-a ani 
 termin_prawny_wyprzedzenie_dni: 14  # A-08 – terminy prawne, podatkowe i sklepowe w tym oknie mają zlecenie
 pr_otwarty_h: 24                  # B-01
 pr_bez_werdyktu_min: 60           # B-01
+pr_poprawki_min: 60               # B-13 – werdykt „do poprawki” na bieżącym commicie starszy niż tyle minut = autor nie zareagował
 werdykt_ok_niescalony_h: 2        # B-02 (start)
 pr_konflikty_max: 3               # B-03 (start)
 pr_konflikt_h: 12                 # B-03 (start)

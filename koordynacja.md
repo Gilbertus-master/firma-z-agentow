@@ -30,6 +30,15 @@ i kończysz.
 ## 3. Koniec
 Dziennik z kontem w nagłówku, `stan.json` z polem `konto`, linia w `przebiegi/`, commit tylko swoich plików.
 
+## Sesje czatu
+- Każdy PR otwarty przez sesję czatu ma w opisie linię `Sesja: <id sesji>` – po niej agent scalający i CEO powiadamiają
+  autora o werdykcie (kontrola B-13).
+- Po wysłaniu PR-a do recenzji sesja **sama pilnuje werdyktu**: co kilka minut (do 2 h) sprawdza `recenzent/stan.json`
+  dla swoich PR-ów i od razu poprawia uwagi. Nie kończy pracy, dopóki jej łańcuch PR-ów nie jest scalony albo nie czeka
+  wyłącznie na decyzję z datą. Łańcuchy PR-ów stoją najczęściej dlatego, że autor nie widzi werdyktu.
+- Zasoby z numerami (np. migracje bazy) bierzesz z przydziału albo sprawdzasz na gałęzi głównej i w otwartych PR-ach,
+  zanim nadasz numer – dwa PR-y z tym samym numerem kończą się konfliktem dopiero po scaleniu.
+
 ## Zmiana harmonogramu
 W jednym commicie: wiersz w `koordynacja-odstepy.tsv` (wszystkie kolumny, `od` = chwila zmiany), wpis w
 `flota/zadania.yaml` (cron), `python3 flota/generuj.py`, testy: `python3 -m unittest discover flota` i
