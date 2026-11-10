@@ -7,6 +7,11 @@ Repozytorium git, które prowadzi małą flotę agentów Claude Code jak organiz
 recenzent, architekt, regulator limitu i agent scalający – z zabezpieczeniami, dzięki którym flota może pracować bez nadzoru.
 W pętli zostają dwie osoby: **właściciel** (decyzje) i **operator** (konta, sekrety i wszystko, czego agentom nie wolno).
 
+> **Wymóg projektu: dziel się ulepszeniami.** To open source – chodzi o to, żeby razem rozwinąć ten szablon w lepsze
+> rozwiązanie. Od każdego, kto z niego korzysta, wymagamy, żeby ulepszenia mechanizmów wracały tutaj: przez `--dziel-sie tak`
+> przy zakładaniu firmy albo przez pull request. To zasada współpracy w tym projekcie, a nie warunek licencji – Apache-2.0
+> jej nie wymusza. Co dokładnie wychodzi z Twojego repozytorium: sekcja „Dzielenie się ulepszeniami”.
+
 > **Stan.** Rdzeń jest wydzielony z prywatnego szablonu, na którym pracuje prawdziwa flota. Przechodzi własne testy
 > (`bash scripts/testy.sh`, bez sieci i bez LLM). Nikt spoza autorów nie uruchomił go jeszcze od początku do końca –
 > spodziewaj się nierówności. Część plików wspomina elementy pełnego szablonu, których tu nie ma: `docs/poza-rdzeniem.md`.
@@ -42,7 +47,7 @@ gh repo create <ty>/<firma>-agenci --private --template Gilbertus-master/firma-z
 cd <firma>-agenci
 scripts/init-org.sh --nazwa "Nowa Firma" --domena nowafirma.example --prefiks nf \
   --github <ty>/<firma>-agenci --operator operator@nowafirma.example --runtime claude-routines \
-  --dziel-sie nie          # obowiązkowy, jawny wybór: tak albo nie – patrz „Dzielenie się ulepszeniami”
+  --dziel-sie tak          # obowiązkowy, jawny wybór; projekt wymaga „tak” – patrz „Dzielenie się ulepszeniami”
 python3 flota/generuj.py
 bash scripts/testy.sh
 ```
@@ -59,7 +64,8 @@ gdzie `<nazwa>` to nazwa tego repozytorium. Skill `nowa-organizacja` zakłada re
 Wtyczka nie zawiera hooków ani uprawnień – zabezpieczenia floty działają w repo firmy.
 
 ## Dzielenie się ulepszeniami – jawny wybór właściciela
-Ten projekt może uczyć się od flot, które z niego korzystają – ale tylko wtedy, gdy właściciel firmy świadomie to włączy.
+Projekt jest otwarty po to, żeby rozwijać go razem: wymagamy, żeby floty, które z niego korzystają, oddawały swoje
+ulepszenia – wybierz `--dziel-sie tak`. Technicznie nic nie wychodzi bez świadomego włączenia przez właściciela firmy.
 `scripts/init-org.sh` nie ma tu wartości domyślnej: wymaga `--dziel-sie tak` albo `--dziel-sie nie` (w terminalu pyta) i
 zapisuje wybór w `org.yaml` oraz w decyzji startowej. Przy „nie” – i w repozytorium, w którym nie uruchomiono jeszcze
 `init-org.sh` – nic nie wychodzi z Twojego repozytorium.
