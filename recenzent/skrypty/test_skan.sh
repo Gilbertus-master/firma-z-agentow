@@ -35,7 +35,7 @@ diff --git a/src/kontakt.js b/src/kontakt.js
 +const wsparcie = "support@firma-testowa.example";
 +const prywatny = "jan.kowalski@poczta.example";
 +const testowy = "ktos@example.com";
-+const tel = "+48 601 202 303";
++const tel = "+48 000 111 222";
 +const pesel = "50610112341";
 +const nie_pesel = "44051401358";
 +const klucz = "@@ATRAPA_KLUCZA@@";
@@ -59,7 +59,7 @@ zawiera "$wyn" "EMAIL     src/kontakt.js:3: j\*\*\*@poczta.example" "e-mail pryw
 nie_zawiera "$wyn" "firma-testowa.example" "adres funkcyjny domeny firmy dozwolony"
 nie_zawiera "$wyn" "example.com" "example.com dozwolone"
 nie_zawiera "$wyn" "usuniete" "linie usunięte (-) pominięte"
-zawiera "$wyn" "TELEFON   src/kontakt.js:5: 486\*\*\*\*\*\*03" "telefon zamaskowany"
+zawiera "$wyn" "TELEFON   src/kontakt.js:5: 480\*\*\*\*\*\*22" "telefon zamaskowany"
 zawiera "$wyn" "PESEL     src/kontakt.js:6: 50\*\*\*\*\*\*\*\*\*" "PESEL z poprawną sumą kontrolną"
 nie_zawiera "$wyn" "kontakt.js:7:" "11 cyfr ze złą sumą kontrolną to nie PESEL"
 zawiera "$wyn" "SEKRET    src/kontakt.js:8: sk_liv…" "klucz Stripe zamaskowany"
