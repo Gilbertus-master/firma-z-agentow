@@ -54,6 +54,15 @@ zadania:
   budzet_usd_przebieg: 4
   budzet_usd_dzien: 10
   budzet_usd_miesiac: 30
+- agent: operacje
+  katalog: operacje
+  priorytet: P1
+- agent: analityk
+  katalog: analityk
+  priorytet: P2
+- agent: projektant
+  katalog: projektant
+  priorytet: P2
 - agent: marketing
   katalog: marketing
   priorytet: P1

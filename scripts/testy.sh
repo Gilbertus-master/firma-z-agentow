@@ -35,6 +35,11 @@ if [ "${1:-}" = "--lista" ]; then
   exit 0
 fi
 
+# Testy samego szablonu (eksport publiczny, init-org na czystym szablonie) – w organizacji założonej z szablonu
+# (brak decyzji-wzorca decyzje/D-RRRRMMDD-01.md) są pomijane, bo sprawdzają stan, którego organizacja już nie ma.
+TYLKO_SZABLON="init-org: eksport publiczny:"
+szablon=0; [ -f decyzje/D-RRRRMMDD-01.md ] && szablon=1
+
 dziennik=$(mktemp "${TMPDIR:-/tmp}/testy.XXXXXX"); trap 'rm -f "$dziennik"' EXIT
 ok=0; zle=0; pominiete=0; czerwone=()
 for t in "${TESTY[@]}"; do
@@ -42,6 +47,10 @@ for t in "${TESTY[@]}"; do
   if [ $# -gt 0 ]; then
     pasuje=0; for slowo in "$@"; do case "$nazwa" in *"$slowo"*) pasuje=1 ;; esac; done
     [ $pasuje -eq 1 ] || { pominiete=$((pominiete + 1)); continue; }
+  fi
+  if [ $szablon -eq 0 ]; then
+    tylko=0; for p in $TYLKO_SZABLON; do case "$nazwa" in "$p"*) tylko=1 ;; esac; done
+    [ $tylko -eq 1 ] && { pominiete=$((pominiete + 1)); printf 'POMIŃ %-45s (tylko w szablonie)\n' "$nazwa"; continue; }
   fi
   start=$(date +%s)
   if bash -c "$polecenie" >"$dziennik" 2>&1; then

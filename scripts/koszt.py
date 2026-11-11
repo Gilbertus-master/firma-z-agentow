@@ -39,8 +39,15 @@ def ceny(repo=REPO):
         r = re.search(r"^%s:\s*([0-9.]+)" % k, t, re.M)
         return float(r.group(1)) if r else dom
     dom = re.search(r"^domyslny:\s*([a-z0-9.-]+)", t, re.M)
+    pr = re.search(r"^progi_kontekstu:\s*\{([^}]*)\}", t, re.M)
+    progi = {k: int(float(v)) for k, v in re.findall(r"([a-z0-9.-]+):\s*([0-9.]+)", pr.group(1))} if pr else {}
     return {"modele": modele, "m5": liczba("mnoznik_cache_5m", 1.25), "m1h": liczba("mnoznik_cache_1h", 2.0),
-            "domyslny": dom.group(1) if dom else next(iter(modele), "")}
+            "domyslny": dom.group(1) if dom else next(iter(modele), ""), "progi": progi}
+
+
+def klucz_progu(model, prog):
+    """Stawka dla zapytań z promptem powyżej progu: wpis `<model>-ponad-<N>k` w ceny-modeli.yaml."""
+    return "%s-ponad-%dk" % (model, prog // 1000)
 
 
 def org_pole(repo, klucz, dom=None):
@@ -61,8 +68,11 @@ def pliki_sesji(transcript):
     return pliki
 
 
-def zuzycie(transcript):
-    """{model: {wejscie, wyjscie, cache_odczyt, cache_zapis_5m, cache_zapis_1h, zapytania}} z zapisu sesji i podagentów."""
+def zuzycie(transcript, progi=None):
+    """{model: {wejscie, wyjscie, cache_odczyt, cache_zapis_5m, cache_zapis_1h, zapytania}} z zapisu sesji i podagentów.
+    progi: {model: liczba tokenów} – zapytanie z promptem (wejście + odczyt i zapis cache) powyżej progu liczy się pod kluczem
+    `<model>-ponad-<N>k` (np. Haiku 5.5 ma drugą stawkę powyżej 100 tys. tokenów)."""
+    progi = progi or {}
     wynik = {}
     for plik in pliki_sesji(transcript):
         odp = {}
@@ -76,12 +86,15 @@ def zuzycie(transcript):
                 continue
             odp[d.get("requestId") or d.get("uuid") or len(odp)] = (msg.get("model") or "?", msg["usage"])
         for model, u in odp.values():
-            w = wynik.setdefault(model, dict.fromkeys(POLA, 0) | {"zapytania": 0})
             cz = u.get("cache_creation") if isinstance(u.get("cache_creation"), dict) else {}
             z1h = int(cz.get("ephemeral_1h_input_tokens") or 0)
             z5m = int(cz.get("ephemeral_5m_input_tokens") or 0)
             if not cz:
                 z5m = int(u.get("cache_creation_input_tokens") or 0)
+            prompt = int(u.get("input_tokens") or 0) + int(u.get("cache_read_input_tokens") or 0) + z5m + z1h
+            if model in progi and prompt > progi[model]:
+                model = klucz_progu(model, progi[model])
+            w = wynik.setdefault(model, dict.fromkeys(POLA, 0) | {"zapytania": 0})
             w["wejscie"] += int(u.get("input_tokens") or 0)
             w["wyjscie"] += int(u.get("output_tokens") or 0)
             w["cache_odczyt"] += int(u.get("cache_read_input_tokens") or 0)
@@ -116,10 +129,11 @@ def dzis(repo, teraz=None):
 def zapisz_linie(repo, agent, sesja, transcript, zrodlo, teraz=None):
     if not re.fullmatch(r"[a-z0-9-]+", agent or ""):
         return None
-    zuz = zuzycie(transcript)
+    cn = ceny(repo)
+    zuz = zuzycie(transcript, cn.get("progi"))
     if not zuz:
         return None
-    per, suma, obce = koszt(zuz, ceny(repo))
+    per, suma, obce = koszt(zuz, cn)
     lok = dzis(repo, teraz)
     linia = {"czas": lok.isoformat(timespec="seconds"), "agent": agent, "sesja": sesja, "zrodlo": zrodlo,
              "rozliczenie": org_pole(repo, "rozliczenie", "team"),

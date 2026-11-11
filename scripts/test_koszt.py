@@ -64,6 +64,22 @@ class Koszt(unittest.TestCase):
         per, _, obce = K.koszt({"claude-nieznany-9": dict.fromkeys(K.POLA, 0) | {"wejscie": 1_000_000}}, K.ceny(self.d))
         self.assertEqual(obce, ["claude-nieznany-9"])
 
+    def test_drugi_prog_haiku_powyzej_100k(self):
+        import json as _j
+        lin = [{"type": "assistant", "requestId": "h1", "message": {"model": "claude-haiku-5-5", "usage": {"input_tokens": 1000, "output_tokens": 100}}},
+               {"type": "assistant", "requestId": "h2", "message": {"model": "claude-haiku-5-5", "usage": {"input_tokens": 50, "cache_read_input_tokens": 150000, "output_tokens": 200}}}]
+        t = self.d / "haiku.jsonl"
+        with open(t, "w", encoding="utf-8") as f:
+            f.write("\n".join(_j.dumps(x) for x in lin) + "\n")
+        cn = K.ceny(K.REPO)
+        self.assertEqual(cn["progi"], {"claude-haiku-5-5": 100000})
+        z = K.zuzycie(t, cn["progi"])
+        self.assertEqual(z["claude-haiku-5-5"]["zapytania"], 1)
+        self.assertEqual(z["claude-haiku-5-5-ponad-100k"]["cache_odczyt"], 150000)
+        per, suma, obce = K.koszt(z, cn)
+        self.assertEqual(obce, [])
+        self.assertAlmostEqual(per["claude-haiku-5-5-ponad-100k"], (50 * 0.5 + 200 * 2.5 + 150000 * 0.05) / 1e6, places=4)
+
     def test_zapis_idempotentny_i_raport(self):
         teraz = dt.datetime(2026, 11, 10, 12, 0, tzinfo=dt.timezone.utc)
         K.zapisz_linie(self.d, "ceo", "s1", self.t, "przebieg", teraz)
@@ -72,11 +88,11 @@ class Koszt(unittest.TestCase):
         plik = self.d / "przebiegi" / "ceo" / "koszty-2026-11-10.jsonl"
         linie = plik.read_text().splitlines()
         self.assertEqual(len(linie), 1)
-        self.assertTrue(linie[0].rstrip().endswith('"koszt_usd": 10.8}'))   # przebieg.sh czyta ostatnie pole
+        self.assertTrue(linie[0].rstrip().endswith('"koszt_usd": 13.2}'))   # przebieg.sh czyta ostatnie pole; Haiku z promptem 1 mln = stawka powyżej 100k
         self.assertEqual(json.loads(linie[0])["zrodlo"], "hook")
         r = K.raport(self.d, 14, teraz)
-        self.assertEqual((r["razem_usd"], r["dni_z_danymi"]), (21.6, 1))
-        self.assertAlmostEqual(r["projekcja_usd_miesiac"], 648.0, places=1)
+        self.assertEqual((r["razem_usd"], r["dni_z_danymi"]), (26.4, 1))
+        self.assertAlmostEqual(r["projekcja_usd_miesiac"], 792.0, places=1)
         self.assertEqual(list(r["agenci"]), ["ceo", "pm"])
         self.assertIsNone(K.zapisz_linie(self.d, "Zła/Nazwa", "s3", self.t, "przebieg", teraz))
 

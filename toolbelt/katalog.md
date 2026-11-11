@@ -50,12 +50,15 @@ do sprawdzenia przed wyborem. Kolumna „Kto” – agent, który ma dostęp (za
 |---|---|---|---|---|---|
 | Baza, logowanie, funkcje | Supabase (MCP-ofic., Management API) | WorkOS / Clerk (logowanie, ?) | sprawdzone | architekt, inżynier; reszta odczyt agregatów | migracje według `uprawnienia.yaml` |
 | Hosting | Cloudflare / Fly.io | Vercel (MCP) | sprawdzone: Fly | architekt | |
-| Błędy aplikacji | Sentry (MCP-ofic.) | – | research | tester, architekt | |
+| Błędy aplikacji | Sentry (MCP-ofic.) | – | research | tester, architekt, operacje | |
 | Buildy mobilne | Codemagic | EAS (Expo) | sprawdzone | architekt | budżet minut! (wyczerpane minuty = błąd 402) |
 | Sklepy z aplikacjami | App Store Connect API, Google Play API | – | sprawdzone | agent aplikacji | konta deweloperskie zakłada operator |
 | Push | Firebase Cloud Messaging | – | sprawdzone | inżynier | |
 | Subskrypcje mobilne | RevenueCat | – | do sprawdzenia | finansowy | sprawdzić Apple Small Business Program (15%) |
 | Testy E2E | Playwright | – | sprawdzone | tester | |
+| Dostępność (test automatyczny) | axe-core (CLI, też w Playwright) · Lighthouse (CLI) | – | ? | projektant, tester | |
+| Analityka produktu | PostHog (MCP-ofic.?) · Plausible (API) | – | ? | analityk | |
+| Monitoring dostępności usługi | monitor HTTP z alarmem (np. Better Stack, UptimeRobot) | – | ? | operacje | |
 | Automatyzacje bez MCP | n8n (MCP Server Trigger, self-host) | Make | research | architekt | deterministyczna „rura” wywoływana przez agentów |
 
 ## Pieniądze, księgi, prawo
