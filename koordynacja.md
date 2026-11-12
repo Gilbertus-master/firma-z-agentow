@@ -29,6 +29,11 @@ i kończysz.
 
 ## 3. Koniec
 Dziennik z kontem w nagłówku, `stan.json` z polem `konto`, linia w `przebiegi/`, commit tylko swoich plików.
+Zapis wyłącznie skryptem: `scripts/przebieg.sh zapisz <agent> "<co>" <twoje ścieżki>` (= `scripts/zapisz.sh`): commit tylko
+podanych ścieżek, `pull --rebase` (przy cudzych zmianach w kopii – merge), push do 5 prób z rosnącym odstępem i losowym
+rozrzutem, nigdy `--force`. Kod 1 = konflikt we własnym pliku, znaczniki konfliktu albo push nieudany – commit zostaje
+lokalnie, ślad na stderr; wpisujesz to do raportu i nie rozwiązujesz siłą (w CI z jednorazowym runnerem niewypchnięty
+commit przepada razem z runnerem – stąd ponowienia). Test: `scripts/test-zapisz.sh` (wyścig dwóch zapisów).
 
 ## Sesje czatu
 - Każdy PR otwarty przez sesję czatu ma w opisie linię `Sesja: <id sesji>` – po niej agent scalający i CEO powiadamiają

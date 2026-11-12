@@ -28,6 +28,7 @@ TU = Path(__file__).resolve().parent
 sys.path.insert(0, str(TU))
 
 import alerty as A  # noqa: E402
+import eskalacja as E  # noqa: E402
 import kontrole as K  # noqa: E402
 import zrodla as Z  # noqa: E402
 
@@ -65,10 +66,10 @@ def git(repo, *args, timeout=90):
 
 
 def zabezpiecz_przed_pull(repo):
-    """Niezacommitowane pliki strażnika (zdarzenia, zlecenia/ceo.md) -> lokalny commit przed pull.
+    """Niezacommitowane pliki strażnika (zdarzenia, skrzynki zlecenia/*.md z wpisami alertów) -> lokalny commit przed pull.
     Brudny plik w drzewie blokuje pull, gdy ktoś inny zmienił go w origin („Scalenie nadpisałoby zmiany”).
     Zdarzenia scala potem `merge=union` z .gitattributes (obie wersje linii). -> opis, gdy commit się udał, albo None."""
-    sciezki = [s for s in (PLIK_ZDARZEN, PLIK_CEO)
+    sciezki = [s for s in (PLIK_ZDARZEN, "zlecenia")
                if git(repo, "status", "--porcelain", "--", s)[1].strip()]
     if not sciezki:
         return None
@@ -145,8 +146,8 @@ def commituj(repo, sciezki, wiadomosc):
 
 
 def wpisy_ceo_obok(repo, wpisy, wiadomosc):
-    """Klon zablokowany: wpisy do zlecenia/ceo.md przez tymczasowy worktree z origin/main (klon bez zmian).
-    wpisy: [(wpis, klucz)]. -> (liczba wstawionych, opis). Bez stash, reset i force; push zwykły."""
+    """Klon zablokowany: wpisy do skrzynek zlecenia/<adresat>.md przez tymczasowy worktree z origin/main (klon bez zmian).
+    wpisy: [(plik, wpis, klucz)]. -> (liczba wstawionych, opis). Bez stash, reset i force; push zwykły."""
     tmp = tempfile.mkdtemp(prefix="straznik-wpis-")
     wt = Path(tmp) / "wt"
     try:
@@ -154,15 +155,19 @@ def wpisy_ceo_obok(repo, wpisy, wiadomosc):
         rc, out = git(repo, "worktree", "add", "-q", "--detach", str(wt), "origin/" + galaz)
         if rc:
             return 0, "worktree nieudany: " + out[:200]
-        n = sum(1 for wpis, k in wpisy if A.wstaw_wpis_ceo(wt / PLIK_CEO, wpis, k))
-        if not n:
-            return 0, "wpis w zlecenia/ceo.md już otwarty"
-        if git(wt, "commit", "-q", "-m", wiadomosc, "--", PLIK_CEO)[0]:
+        pliki = []
+        for plik, wpis, k in wpisy:
+            if A.wstaw_wpis_ceo(wt / plik, wpis, k) and plik not in pliki:
+                pliki.append(plik)
+        if not pliki:
+            return 0, "wpis w skrzynce już otwarty"
+        git(wt, "add", "--", *pliki)
+        if git(wt, "commit", "-q", "-m", wiadomosc, "--", *pliki)[0]:
             return 0, "commit obok klonu nieudany"
         rc, out = git(wt, "push", "-q", "origin", "HEAD:" + galaz, timeout=30)
         if rc:
             return 0, "push obok klonu nieudany: " + out[:200]
-        return n, "wpis w zlecenia/ceo.md (obok zablokowanego klonu)"
+        return len(pliki), "wpis w %s (obok zablokowanego klonu)" % ", ".join(pliki)
     finally:
         git(repo, "worktree", "remove", "--force", str(wt))
         shutil.rmtree(tmp, ignore_errors=True)
@@ -228,6 +233,10 @@ def main(argv=None):
         operator = (org.get("ludzie", {}) if org else {}).get("operator", {})
         if operator.get("kontakt_firmowy") and "STRAZNIK_MAIL_DO" not in os.environ:
             A.MAIL_DO = operator["kontakt_firmowy"]
+        wlasciciel = (org.get("ludzie", {}) if org else {}).get("wlasciciel", {}) or {}
+        if wlasciciel.get("kontakt_firmowy") and "STRAZNIK_MAIL_WLASCICIEL" not in os.environ:
+            A.MAIL_WLASCICIEL = wlasciciel["kontakt_firmowy"]
+        tab = E.tabela(org)
         zewn = Z.zewnetrzne_z_pliku(dane_kat) if dane_kat else Z.pobierz_zewnetrzne(repo)
         dane = Z.zloz(repo_danych, zadania, zewn)
         wyniki = K.uruchom_wszystkie(dane, teraz, Z.KONTROLE_AKTYWNE)
@@ -237,6 +246,15 @@ def main(argv=None):
             wyciszenia = A.czytaj_wyciszenia((Path(repo_danych) / PLIK_CEO).read_text(encoding="utf-8"))
         except OSError:
             wyciszenia = []
+        skrzynki = {}
+        for pz in sorted((Path(repo_danych) / "zlecenia").glob("*.md")):
+            try:
+                skrzynki[pz.name] = pz.read_text(encoding="utf-8")
+            except OSError:
+                pass
+        podjete = E.podjete_kontrole(skrzynki)
+        if skrzynki:   # „Wycisz do:” działa w odpowiedzi na wpis strażnika w każdej skrzynce, nie tylko u CEO
+            wyciszenia = A.czytaj_wyciszenia("\n\n".join(skrzynki.values()))
     finally:
         if migawka:
             shutil.rmtree(migawka, ignore_errors=True)
@@ -254,31 +272,43 @@ def main(argv=None):
     klon_ok = klon_stan != "uwaga"
     czas_txt = teraz.astimezone(K.WAW).strftime("%Y-%m-%d %H:%M")
     mail_stan = poprzedni.get("mail")
-    alerty_przebiegu, ceo_zmieniony, wpisy_obok = [], False, []
+    alerty_przebiegu, zmienione_skrzynki, wpisy_obok, poziomy = [], [], [], {}
     for nazwa, w, k in do_alertu:
         skutki = []
+        n = int((stan_alertow["alerty"].get(k) or {}).get("n") or 1)
+        odb, poziom = E.odbiorcy(nazwa, w, n, tab, nazwa in podjete)
+        poziomy[nazwa] = poziom
+        skutki.append("adresaci: %s (poziom %s)" % (", ".join(odb), poziom))
         if efekty:
             if A.cisza_nocna(teraz):
                 skutki.append("powiadomienie pominięte (cisza nocna 23–7)")
             else:
                 skutki.append(A.powiadom("%s: %s" % (K.NAZWY[nazwa], A.krotko(nazwa, w))))
-            mail_stan = A.wyslij_mail(A.temat(nazwa, w), A.tresc(nazwa, w, teraz))
-            skutki.append(mail_stan)
+            wynik_maila = A.wyslij_mail(A.temat(nazwa, w), A.tresc(nazwa, w, teraz), do=A.adresy_maila(odb, poziom))
+            if wynik_maila != A.MAIL_BEZ_ADRESATA:
+                mail_stan = wynik_maila
+            skutki.append(wynik_maila)
         else:
             skutki.append("bez maila i powiadomienia (--dane)")
-        try:
-            if not klon_ok:
-                wpisy_obok.append((A.wpis_ceo(nazwa, w, k, teraz), k))
-                skutki.append("wpis w zlecenia/ceo.md przez worktree obok klonu")
-            elif A.wstaw_wpis_ceo(plik_ceo, A.wpis_ceo(nazwa, w, k, teraz), k):
-                ceo_zmieniony = True
-                skutki.append("wpis w zlecenia/ceo.md")
-            else:
-                skutki.append("wpis w zlecenia/ceo.md już otwarty")
-        except OSError as e:
-            skutki.append("wpis w zlecenia/ceo.md nieudany: %s" % type(e).__name__)
+        for kto in (x for x in odb if x != E.WLASCICIEL):
+            plik = "zlecenia/%s.md" % kto
+            wpis = A.wpis_ceo(nazwa, w, k, teraz, odb)
+            try:
+                if not klon_ok:
+                    wpisy_obok.append((plik, wpis, k))
+                    skutki.append("wpis w %s przez worktree obok klonu" % plik)
+                elif A.wstaw_wpis_ceo(repo / plik, wpis, k):
+                    if plik not in zmienione_skrzynki:
+                        zmienione_skrzynki.append(plik)
+                    skutki.append("wpis w %s" % plik)
+                else:
+                    skutki.append("wpis w %s już otwarty" % plik)
+            except OSError as e:
+                skutki.append("wpis w %s nieudany: %s" % (plik, type(e).__name__))
         zdarzenia.append("- %s · alert · %s · %s" % (czas_txt, nazwa, ", ".join(skutki)))
-        alerty_przebiegu.append({"kontrola": nazwa, "klucz": A.skrot_klucza(k), "skutki": skutki})
+        alerty_przebiegu.append({"kontrola": nazwa, "klucz": A.skrot_klucza(k), "adresaci": odb, "poziom": poziom, "skutki": skutki})
+    alarmy = E.rejestr(poprzedni.get("alarmy"), wyniki, set(stan_alertow["aktywne_id"]) | set(stan_alertow["alert_zrodel"]),
+                       teraz, tab, podjete, poziomy)
 
     # Skutki deterministyczne (tylko prawdziwy przebieg): dead-letter dla martwych przebiegów, HALT przy sufitach organizacji.
     pliki_skutkow = []
@@ -316,8 +346,8 @@ def main(argv=None):
             n, opis = wpisy_ceo_obok(repo, wpisy_obok, "straznik: alert przy zablokowanym klonie (%s)" % czas_txt)
             uwagi.append("git: %s (%d)" % (opis, n))
     elif efekty:
-        if ceo_zmieniony or pliki_skutkow:
-            sciezki = ([PLIK_CEO] if ceo_zmieniony else []) + ([PLIK_ZDARZEN] if plik_zdarzen.exists() else []) + pliki_skutkow
+        if zmienione_skrzynki or pliki_skutkow:
+            sciezki = list(zmienione_skrzynki) + ([PLIK_ZDARZEN] if plik_zdarzen.exists() else []) + pliki_skutkow
             commit_stan = commituj(repo, sciezki, "straznik: alert %s (%s)" % (", ".join(sorted(set([n for n, _, _ in do_alertu] + (["skutki"] if pliki_skutkow else [])))), czas_txt))
         else:
             ostatni, _ = K.parsuj_czas(ostatni_commit)
@@ -333,7 +363,7 @@ def main(argv=None):
             "alerty": stan_alertow["alerty"], "bledy_zrodel": stan_alertow["bledy_zrodel"],
             "alert_zrodel": stan_alertow["alert_zrodel"], "aktywne_id": stan_alertow["aktywne_id"],
             "wyciszenia": [dict(x, do=K.iso(x["do"])) for x in wyciszenia if x["do"] > teraz], "ostatni_commit_zdarzen": ostatni_commit, "mail": mail_stan,
-            "alerty_przebiegu": alerty_przebiegu, "uwagi": uwagi}
+            "alerty_przebiegu": alerty_przebiegu, "alarmy": alarmy, "uwagi": uwagi}
     plik_stanu.parent.mkdir(parents=True, exist_ok=True)
     tmp = plik_stanu.with_suffix(".json.tmp")
     tmp.write_text(json.dumps(stan, ensure_ascii=False, indent=1), encoding="utf-8")

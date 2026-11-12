@@ -6,6 +6,8 @@
 #
 # STRAZNIK_REPO – klon roboczy strażnika (domyślnie ~/projekty/organizacja-straznik; NIE wspólny checkout agentów).
 # STRAZNIK_URL  – adres repo organizacji do sklonowania (domyślnie origin checkoutu, z którego uruchamiasz ten skrypt).
+# STRAZNIK_MAIL_OD, STRAZNIK_MAIL_DO – adresy maili alertów; trafiają tylko do plist (nie do repo). Bez nich ponowna instalacja
+#   zachowuje wartości z dotychczasowego plist.
 set -euo pipefail
 
 ETYKIETA=org.agenci.straznik
@@ -36,8 +38,14 @@ fi
 SZABLON=$REPO/moduly/straznik/straznik.plist.szablon
 [ -f "$SZABLON" ] || { echo "BŁĄD: brak $SZABLON w klonie – czy moduł strażnika jest na gałęzi głównej repo?" >&2; exit 1; }
 
+poprzedni() { [ -f "$PLIST" ] && /usr/libexec/PlistBuddy -c "Print :EnvironmentVariables:$1" "$PLIST" 2>/dev/null || true; }
+MAIL_OD=${STRAZNIK_MAIL_OD:-$(poprzedni STRAZNIK_MAIL_OD)}
+MAIL_DO=${STRAZNIK_MAIL_DO:-$(poprzedni STRAZNIK_MAIL_DO)}
+
 mkdir -p "$HOME/Library/LaunchAgents" "$HOME/Library/Logs"
 sed -e "s#__REPO__#$REPO#g" -e "s#__HOME__#$HOME#g" "$SZABLON" > "$PLIST"
+[ -z "$MAIL_OD" ] || plutil -insert EnvironmentVariables.STRAZNIK_MAIL_OD -string "$MAIL_OD" "$PLIST"
+[ -z "$MAIL_DO" ] || plutil -insert EnvironmentVariables.STRAZNIK_MAIL_DO -string "$MAIL_DO" "$PLIST"
 plutil -lint "$PLIST" >/dev/null
 
 launchctl bootout "$DOMENA/$ETYKIETA" 2>/dev/null || true

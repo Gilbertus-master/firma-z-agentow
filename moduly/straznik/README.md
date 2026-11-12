@@ -6,7 +6,7 @@ w swoim okienku, PR czeka na werdykt, zlecenie minęło termin bez odpowiedzi, b
 błędem.
 
 Strażnik nie ocenia jakości pracy i niczego nie naprawia. Zgłasza – operatorowi mailem i powiadomieniem, agentowi CEO
-wpisem „Pilne” w `zlecenia/ceo.md` – a w dwóch przypadkach zaciąga hamulec: wstrzymuje agenta po serii błędów
+wpisem „Pilne” w skrzynce adresata kontroli (`zlecenia/<adresat>.md`; CEO dopiero przy 2. przypomnieniu) – a w dwóch przypadkach zaciąga hamulec: wstrzymuje agenta po serii błędów
 i zatrzymuje flotę po wyczerpaniu budżetu organizacji. Dlaczego skrypt, a nie kolejny agent:
 `docs/adr/0003-straznik-bez-llm.md`.
 
@@ -20,7 +20,7 @@ i zatrzymuje flotę po wyczerpaniu budżetu organizacji. Dlaczego skrypt, a nie 
 | Rytm | co 15 min – GitHub Actions (zalecane) albo launchd na Macu |
 | Konfiguracja | `org.yaml` w repo organizacji; zmienne środowiskowe `STRAZNIK_…` mają pierwszeństwo |
 | Wymagania | Python 3.9+ (wyłącznie biblioteka standardowa, bez pip), `git`, `gh` |
-| Kanały alertu | mail (Resend), powiadomienie macOS (tylko przy launchd), wpis „Pilne” w `zlecenia/ceo.md` |
+| Kanały alertu | mail (Resend), powiadomienie macOS (tylko przy launchd), wpis „Pilne” w `zlecenia/<adresat>.md` (tabela adresatów, eskalacja do CEO i właściciela) |
 | Sekrety | zmienne środowiskowe (CI) albo pęk kluczy macOS; nigdy w plikach, logach ani komunikatach błędów |
 
 ### Pliki modułu
@@ -30,9 +30,10 @@ i zatrzymuje flotę po wyczerpaniu budżetu organizacji. Dlaczego skrypt, a nie 
 | `straznik.py` | jeden przebieg: aktualizacja klonu, konfiguracja, kontrole, alerty, zapis stanu, commit własnych plików |
 | `zrodla.py` | pobieranie danych (pliki repo, `git`, `gh`, źródła wtyczek), odczyt `org.yaml`, sekrety |
 | `kontrole.py` | kontrole jako czyste funkcje `(dane, teraz) -> wynik` – bez sieci i bez zapisu |
-| `alerty.py` | reguły alertów, wyciszenia, treść maila, powiadomienie, wpis w `zlecenia/ceo.md` |
+| `alerty.py` | reguły alertów, wyciszenia, treść maila, powiadomienie, wpis „Pilne” w skrzynce adresata |
+| `eskalacja.py` | adresaci alertu (tabela kontrola → adresat, eskalacja do CEO i właściciela) i rdzeń rejestru alarmów |
 | `instaluj.sh`, `straznik.plist.szablon` | instalacja i odinstalowanie agenta launchd (macOS) |
-| `test_straznik.py`, `testdane/` | testy i fikcyjne dane przykładowe (bez sieci) |
+| `test_straznik.py`, `test_eskalacja.py`, `testdane/` | testy i fikcyjne dane przykładowe (bez sieci) |
 
 ### Wymagania
 
@@ -67,7 +68,7 @@ Włączenie na stałe opisuje sekcja „Uruchamianie”.
 3. **Źródła** – pliki repo czytane lokalnie, źródła sieciowe (`git ls-remote`, `gh`, źródła wtyczek) pobierane
    równolegle. Źródło, które nie odpowiedziało, nie przerywa przebiegu – jego kontrola dostaje status błędu źródła.
 4. **Kontrole** – każda aktywna kontrola liczona osobno; wyjątek w jednej nie zatrzymuje pozostałych.
-5. **Alerty** – porównanie z poprzednim stanem (`ceo/straznik.json`) i z wyciszeniami z `zlecenia/ceo.md`; alert tylko
+5. **Alerty** – porównanie z poprzednim stanem (`ceo/straznik.json`) i z wyciszeniami ze skrzynek `zlecenia/*.md`; alert tylko
    wtedy, gdy coś się zmieniło albo przyszła pora przypomnienia.
 6. **Skutki** – mail, powiadomienie, wpis „Pilne”, bezpieczniki (dead-letter, `HALT`), linie w dzienniku zdarzeń.
 7. **Zapis** – commit i push wyłącznie własnych plików strażnika, nowy stan w `ceo/straznik.json`, jedna linia
@@ -82,7 +83,9 @@ Strażnik czyta `org.yaml` z repo, które sprawdza. Klucze, z których korzysta:
 | `organizacja.prefiks` | prefiks nazw zadań zaplanowanych `<prefiks>-<agent>-<konto>` (kontrola `konfiguracja`) | `org` |
 | `organizacja.strefa` | strefa czasu: okienka harmonogramu, terminy zleceń, cisza nocna, daty w zdarzeniach i wpisach | `Europe/Warsaw` (także przy nieznanej nazwie strefy) |
 | `organizacja.domena` | nadawca maili alertów: `Strażnik floty <straznik@<domena z org.yaml>>` | `alerty@example.com` – ustaw domenę albo `STRAZNIK_MAIL_OD` |
-| `ludzie.operator.kontakt_firmowy` | adresat maili alertów | `ceo@example.com` – ustaw adres albo `STRAZNIK_MAIL_DO` |
+| `ludzie.operator.kontakt_firmowy` | kopia maila alertu od poziomu CEO (operator raportuje do CEO) | bez operatora (flota foundera) – brak kopii |
+| `ludzie.wlasciciel.kontakt_firmowy` | mail alertu na poziomie właściciela (stoi CEO, budżet, alarm CEO po 2. przypomnieniu) | brak maila – alarm zostaje w rejestrze `alarmy` i w zdarzeniach |
+| `straznik.adresaci` | nadpisanie tabeli adresatów: `{kontrola: adresat}` albo `{kontrola: {adresat, reakcja_min}}` (sekcja „Adresaci i eskalacja”) | tabela domyślna |
 | `repo.github` | `<właściciel>/<repo organizacji>`: właściciel wszystkich repo na GitHubie i repo organizacji w kontroli `pr` | nazwy zastępcze – kontrola `pr` zgłosi błąd źródła |
 | `repo.produkt` | repo produktu – lista `[właściciel/nazwa, …]` albo jedna nazwa. Kontrola `pr` obejmuje je wszystkie i repo organizacji; pierwsze z listy to repo, którego werdykty mają klucz bez prefiksu | sprawdzane tylko repo organizacji |
 | `runtime.glowny` | `desktop-scheduled` = flota działa jako zadania zaplanowane aplikacji desktopowej; przy każdej innej wartości kontrola `konfiguracja` jest pomijana | `desktop-scheduled` |
@@ -137,7 +140,7 @@ Uwagi:
 | `<agent>/agent.md` | `przebiegi` | znak, że rola jest uruchomiona; agent z harmonogramu bez tego pliku nie jest sprawdzany |
 | `<agent>/stan.json` → `ostatni_przebieg` | `przebiegi` | brak pliku = uwaga, nie rozbieżność |
 | `recenzent/stan.json` → `recenzje` | `pr` | plik musi istnieć (wystarczy `{}`); bez niego kontrola zgłasza błąd źródła – utwórz plik albo usuń `pr` z `straznik.kontrole` |
-| `zlecenia/*.md` | `zlecenia` | format wpisów: `zlecenia/README.md`; wyciszenia alertów strażnik czyta z `zlecenia/ceo.md` |
+| `zlecenia/*.md` | `zlecenia` | format wpisów: `zlecenia/README.md`; wyciszenia alertów strażnik czyta z odpowiedzi na swoje wpisy w każdej skrzynce |
 | `przebiegi/<agent>/*.jsonl` | `budzety`, `martwe` | linie kontraktu przebiegu (`pm/specyfikacje/kontrakt-przebiegu.md`) i pliki kosztów |
 | `flota/zadania.yaml` | `budzety` | limity miesięczne agentów (`budzet_usd_miesiac`) |
 | katalog zadań zaplanowanych (poza repo) | `konfiguracja` | domyślnie `~/.claude/scheduled-tasks`; tylko przy `runtime.glowny: desktop-scheduled` |
@@ -323,7 +326,7 @@ niewidziane od 3 dni są usuwane ze stanu.
 
 ### Wyciszanie
 
-Znaną rozbieżność wycisza się w **odpowiedzi** na wpis strażnika w `zlecenia/ceo.md`, linią:
+Znaną rozbieżność wycisza się w **odpowiedzi** na wpis strażnika (w `zlecenia/<adresat>.md`), linią:
 
 ```
 Wycisz do: RRRR-MM-DD[ GG:MM][ (ID, ID)]
@@ -335,16 +338,43 @@ Wycisz do: RRRR-MM-DD[ GG:MM][ (ID, ID)]
   powstaje, a w dzienniku zdarzeń zostaje linia „bez alertu – wszystkie ID wyciszone”.
 - Linia działa niezależnie od statusu wpisu (także po jego zamknięciu), dopóki data nie minie.
 
+### Adresaci i eskalacja
+
+Alert idzie do tego, kto może usunąć przyczynę – nie do wszystkich naraz (`eskalacja.py`):
+
+| Kontrola | Adresat (wpis „Pilne” w `zlecenia/<adresat>.md`) | Czas reakcji |
+|---|---|---|
+| `pr` | `recenzent` | 60 min |
+| `zlecenia` | adresat zlecenia po terminie (skrzynka, w której leży) | 120 min |
+| `przebiegi`, `martwe` | agent z ID rozbieżności | 120 min |
+| `konfiguracja`, `testflight`, `automaty`, `klon` | `ceo` | 240 / 240 / 120 / 120 min |
+| `budzety` | `ceo` + właściciel od razu | 60 min |
+| błąd źródła (każda kontrola) | `ceo` | jak kontrola |
+
+- **Kopia do CEO dopiero przy 2. przypomnieniu** (alert nr 3 tego samego zbioru ID, czyli po 2 h i kolejnych 6 h) – o ile
+  alarm nie został **podjęty**: wpis strażnika ma status „w toku” albo cokolwiek w polu `Odpowiedź:`.
+- **Właściciel** (mail na `ludzie.wlasciciel.kontakt_firmowy`): gdy stoi sam CEO (`ceo` w ID kontroli `przebiegi` albo
+  `martwe`), gdy kończy się budżet (`budzety`) i gdy alarm, którego adresatem był już CEO, dochodzi do 2. przypomnienia.
+  Operator (jeśli jest) dostaje kopię maila od poziomu CEO. Poziom adresata nie wysyła maili – wpis w skrzynce wystarcza.
+- Tabelę nadpisuje `org.yaml → straznik.adresaci` (adresat: `recenzent`, `agent`, `adresat_zlecenia`, `ceo`, `wlasciciel`
+  albo nazwa agenta).
+- **Rejestr alarmów** (`ceo/straznik.json → alarmy`, rdzeń): jeden wpis na kontrolę – `odpowiedzialny`, `reakcja_min`,
+  `od`, `termin`, `stan` (`otwarty` / `podjety` / `zamkniety`), `poziom` eskalacji, `po_terminie`, a po zamknięciu
+  `zamkniety_od` i `czas_usuniecia_min`. Alarm, który wraca w 30 min od zamknięcia, to to samo zdarzenie (czas liczy się
+  dalej); zamknięte znikają po 3 dniach. Pełny rejestr typów z progami eskalacji i MTTR – osobna zmiana.
+- „Wycisz do:” działa w odpowiedzi na wpis strażnika w każdej skrzynce.
+
 ### Kanały
 
-1. **Mail** przez Resend. Nadawca: `straznik@<domena z org.yaml>` (albo `STRAZNIK_MAIL_OD`), adresat:
-   `ludzie.operator.kontakt_firmowy` (albo `STRAZNIK_MAIL_DO`). Temat: `[STRAŻNIK] <kontrola>: <krótko>`. Treść: status,
+1. **Mail** przez Resend – tylko od poziomu CEO (sekcja wyżej). Nadawca: `straznik@<domena z org.yaml>` (albo
+   `STRAZNIK_MAIL_OD`), adresaci: właściciel (`ludzie.wlasciciel.kontakt_firmowy` / `STRAZNIK_MAIL_WLASCICIEL`) i operator
+   (`ludzie.operator.kontakt_firmowy` / `STRAZNIK_MAIL_DO`). Temat: `[STRAŻNIK] <kontrola>: <krótko>`. Treść: status,
    liczby, ID (najwyżej 30, potem „… i N więcej”), opis i uwagi – bez danych osobowych i sekretów. Bez klucza Resend
    przebieg idzie dalej, a w stanie i zdarzeniach zostaje „mail pominięty – brak klucza Resend”.
 2. **Powiadomienie macOS** „Strażnik floty” – tylko tam, gdzie jest `osascript`, czyli przy uruchamianiu przez launchd.
    W **ciszy nocnej 23:00–7:00** (strefa organizacji) powiadomienie jest pomijane; mail i wpis „Pilne” powstają jak
    zwykle.
-3. **Wpis „Pilne”** w `zlecenia/ceo.md`:
+3. **Wpis „Pilne”** w skrzynce każdego adresata `zlecenia/<adresat>.md` (linia „Adresaci alertu: …”):
 
    ```
    ## [otwarte] RRRR-MM-DD · od: straznik · Pilne (strażnik) · <kontrola>: <krótko>
@@ -363,9 +393,9 @@ Wycisz do: RRRR-MM-DD[ GG:MM][ (ID, ID)]
 
 | Plik | Zawartość | W repo? |
 |---|---|---|
-| `ceo/straznik.json` | pełny stan ostatniego przebiegu: `czas`, `czas_przebiegu_s`, `kontrole`, `alerty`, `bledy_zrodel`, `alert_zrodel`, `aktywne_id`, `wyciszenia`, `ostatni_commit_zdarzen`, `mail`, `alerty_przebiegu`, `uwagi` | nie – w `.gitignore`; w GitHub Actions przenoszony między przebiegami w cache |
+| `ceo/straznik.json` | pełny stan ostatniego przebiegu: `czas`, `czas_przebiegu_s`, `kontrole`, `alerty`, `bledy_zrodel`, `alert_zrodel`, `aktywne_id`, `wyciszenia`, `ostatni_commit_zdarzen`, `mail`, `alerty_przebiegu` (z adresatami i poziomem), `alarmy` (rejestr), `uwagi` | nie – w `.gitignore`; w GitHub Actions przenoszony między przebiegami w cache |
 | `ceo/straznik-zdarzenia.md` | dziennik: linia tylko przy zmianie statusu albo zbioru ID kontroli, przy alercie i przy zadziałaniu bezpiecznika; najnowsze na dole | tak – commit najwyżej raz na godzinę, a przy alercie od razu |
-| `zlecenia/ceo.md` | wpisy „Pilne” dla agenta CEO | tak – commit od razu |
+| `zlecenia/<adresat>.md` | wpisy „Pilne” dla adresatów alertu (recenzent, agent, CEO) | tak – commit od razu |
 | `przebiegi/dead-letter/<agent>.md` | wstrzymanie agenta po serii błędów (kontrola `martwe`) | tak – commit od razu |
 | `bezpieczenstwo/HALT` | zatrzymanie floty po wyczerpaniu budżetu organizacji (kontrola `budzety`) | tak – commit od razu |
 
@@ -394,7 +424,7 @@ Workflow `.github/workflows/straznik.yml` uruchamia strażnika co 15 minut na ch
    | Sekret | Do czego | Bez niego |
    |---|---|---|
    | `STRAZNIK_TOKEN` | token GitHub z odczytem PR-ów repo produktu i zapisem do repo organizacji | używany jest token przebiegu Actions – działa tylko repo organizacji, PR-y repo produktu będą błędem źródła |
-   | `STRAZNIK_RESEND_KEY` | klucz Resend do maili alertów | alert bez maila: wpis w `zlecenia/ceo.md` i dziennik zdarzeń |
+   | `STRAZNIK_RESEND_KEY` | klucz Resend do maili alertów | alert bez maila: wpis w skrzynce adresata i dziennik zdarzeń |
 
 3. **Stan** (`ceo/straznik.json`) jest przenoszony między przebiegami w cache Actions – nie trafia do repo.
 4. **Wtyczki.** Ich zmienne (`STRAZNIK_ASC…`, `STRAZNIK_SUPABASE_PROJEKT`, `STRAZNIK_SEKRET_…` itd.) dopisz w sekcji
@@ -446,7 +476,7 @@ ale zapisuje stan, zdarzenia i wpisy „Pilne” w katalogu `repo/` z danymi.
 Każdy prawdziwy przebieg zaczyna się od `git pull --no-rebase` w repo roboczym. Strażnik nigdy nie używa `git stash`,
 `git reset` ani wymuszonego pusha – cudzych zmian nie cofa.
 
-**Zwykła kolizja.** Gdy pull odmawia, bo własne pliki strażnika (`ceo/straznik-zdarzenia.md`, `zlecenia/ceo.md`) mają
+**Zwykła kolizja.** Gdy pull odmawia, bo własne pliki strażnika (`ceo/straznik-zdarzenia.md`, skrzynki `zlecenia/*.md`) mają
 niezacommitowane zmiany, strażnik robi z nich lokalny commit, ponawia pull i wypycha wynik. Nie wymaga to niczyjej
 uwagi.
 
@@ -458,7 +488,7 @@ uwagi.
    - pozostałe kontrole liczy na migawce gałęzi głównej origin (kopia tylko do odczytu w katalogu tymczasowym);
    - zdarzenia zapisuje lokalnie i niczego nie commituje w klonie;
    - nie zakłada plików dead-letter ani `HALT`;
-   - wpisy „Pilne” – w tym alert o samym klonie – dopisuje do `zlecenia/ceo.md` przez tymczasowy worktree z gałęzi
+   - wpisy „Pilne” – w tym alert o samym klonie – dopisuje do skrzynek adresatów przez tymczasowy worktree z gałęzi
      głównej origin (commit tylko tego pliku, zwykły push, worktree usuwany), żeby alert nie zginął.
 
 **Naprawa (operator, ręcznie):**
@@ -509,7 +539,8 @@ zaczyna od świeżego checkoutu, więc ta sytuacja w praktyce dotyczy tylko laun
 | `STRAZNIK_GH_ORG` | właściciel repo na GitHubie – nadpisuje właściciela z `repo.github` | z `org.yaml` |
 | `GH_TOKEN` | token dla `gh` | logowanie `gh` |
 | `STRAZNIK_MAIL_OD` | nadawca maili alertów | `Strażnik floty <straznik@<domena z org.yaml>>` |
-| `STRAZNIK_MAIL_DO` | adresat maili alertów | `ludzie.operator.kontakt_firmowy` |
+| `STRAZNIK_MAIL_WLASCICIEL` | mail właściciela (poziom właściciela) | `ludzie.wlasciciel.kontakt_firmowy` |
+| `STRAZNIK_MAIL_DO` | mail operatora – kopia od poziomu CEO (oba adresy podane do `instaluj.sh` trafiają tylko do plist; ponowna instalacja bez nich zachowuje poprzednie) | `ludzie.operator.kontakt_firmowy` |
 | `STRAZNIK_RESEND_KEY` | klucz Resend | pęk kluczy; bez klucza mail pomijany |
 | `STRAZNIK_SEKRET_<USLUGA>` | sekret usługi zamiast pęku kluczy | pęk kluczy |
 | `STRAZNIK_POMIN_TYTUL` | wyrażenie regularne tytułów PR pomijanych w kontroli `pr` – nadpisuje `straznik.pomin_tytul` | brak (nic nie jest pomijane) |

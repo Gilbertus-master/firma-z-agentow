@@ -6,8 +6,9 @@
   python3 -I scripts/propozycje.py wyslij <plik>                               # zgoda w org.yaml + bramka → issue w repo szablonu
 
 Co trafia do zgłoszenia (lista dozwolona – tylko mechanizmy, nigdy treść firmy):
-  1. zmiany w plikach mechanizmów szablonu (PROPONOWANE) względem wersji szablonu, na której jest firma – baza: drugi rodzic
-     ostatniego commita „szablon: aktualizacja…”, a bez aktualizacji – pierwszy commit repo (kopia szablonu); ścieżki lokalne
+  1. zmiany w plikach mechanizmów szablonu (PROPONOWANE) względem wersji szablonu, na której jest firma – baza: najnowszy z
+     kandydatów: drugi rodzic ostatniego commita „szablon: aktualizacja…”, `git merge-base HEAD szablon/<gałąź>` (remote `szablon`),
+     znacznik `org.yaml → repo.szablon_baza`; bez kandydatów – pierwszy commit repo (kopia szablonu); ścieżki lokalne
      z .szablon-lokalne są pomijane;
   2. reguły podręczników agentów (`*/wiedza/podrecznik.md`) o statusie doradcza/egzekwowana z „pomogło ≥ 3” i „zaszkodziło: 0” –
      sam tekst reguły, bez źródła.
@@ -55,15 +56,44 @@ def pole(tekst, klucz):
     return m.group(1).strip() if m else ""
 
 
-def baza(repo):
-    """Wersja szablonu, na której jest firma: drugi rodzic ostatniej aktualizacji albo pierwszy commit repo."""
+def _przodek(repo, a, b):
+    """Czy a jest przodkiem b (albo tym samym commitem)."""
+    return subprocess.run(["git", "-C", str(repo), "merge-base", "--is-ancestor", a, b], capture_output=True).returncode == 0
+
+
+def baza(repo, remote="szablon"):
+    """Wersja szablonu, na której jest firma -> (sha, opis). Kandydaci (każdy musi być w historii HEAD):
+    1. drugi rodzic ostatniego commita „szablon: aktualizacja…” (scripts/aktualizuj-z-szablonu.sh);
+    2. `git merge-base HEAD <remote>/<gałąź>` dla każdej gałęzi zdalnej szablonu – ostatni commit wspólny z szablonem, także gdy
+       firma powstała z kopii z pełną historią szablonu i jeszcze nie aktualizowała;
+    3. znacznik `org.yaml → repo.szablon_baza` (SHA albo tag wersji szablonu, od której firma wystartowała).
+    Wygrywa najnowszy (ten, którego pozostali są przodkami; przy rozłącznych – najpóźniejsza data commita). Bez kandydatów – pierwszy
+    commit repo; gdy repo ma historię szablonu sprzed kopii, ta baza jest za stara (zgłoszenie odesłałoby szablonowi jego własne
+    zmiany) – opis mówi wtedy, jak to naprawić."""
+    kandydaci = []
     akt = git(repo, "log", "-1", "--format=%H", "--grep", "^szablon: aktualizacja")
     if akt:
         rodzic = git(repo, "rev-parse", "--verify", "--quiet", akt + "^2")
         if rodzic:
-            return rodzic, git(repo, "log", "-1", "--format=%s", akt)
+            kandydaci.append((rodzic, git(repo, "log", "-1", "--format=%s", akt)))
+    for ref in git(repo, "for-each-ref", "--format=%(refname)", "refs/remotes/%s/" % remote).splitlines():
+        mb = "" if ref.endswith("/HEAD") else git(repo, "merge-base", "HEAD", ref)
+        if mb:
+            kandydaci.append((mb, "ostatni commit wspólny z %s" % ref.replace("refs/remotes/", "")))
+    znacznik = pole(org(repo), "szablon_baza")
+    if znacznik:
+        sha = git(repo, "rev-parse", "--verify", "--quiet", znacznik + "^{commit}")
+        if sha:
+            kandydaci.append((sha, "znacznik org.yaml → repo.szablon_baza (%s)" % znacznik))
+    kandydaci = [k for k in kandydaci if _przodek(repo, k[0], "HEAD")]
+    if kandydaci:
+        najnowsze = [k for k in kandydaci if all(_przodek(repo, inny[0], k[0]) for inny in kandydaci)]
+        if najnowsze:
+            return najnowsze[0]
+        return max(kandydaci, key=lambda k: int(git(repo, "log", "-1", "--format=%ct", k[0]) or 0))
     korzen = git(repo, "rev-list", "--max-parents=0", "HEAD").splitlines()
-    return (korzen[-1], "pierwszy commit repo (kopia szablonu)") if korzen else ("", "")
+    return (korzen[-1], "pierwszy commit repo (kopia szablonu) – jeśli repo ma historię szablonu, pobierz szablon "
+                        "(`scripts/aktualizuj-z-szablonu.sh --sucho`) albo ustaw org.yaml → repo.szablon_baza") if korzen else ("", "")
 
 
 def lokalne(repo):

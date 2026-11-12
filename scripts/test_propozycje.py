@@ -83,6 +83,53 @@ class Propozycje(unittest.TestCase):
         kod, kom = P.wyslij(self.r, plik, gh=str(gh))
         self.assertEqual(kod, 0, kom); self.assertIn("--repo Wydawca/agentyczna-organizacja", (self.d / "wywolanie").read_text())
 
+    def test_baza_od_wersji_szablonu_nie_od_pierwszego_commita(self):
+        """Regresja: firma powstała z kopii szablonu z pełną historią – pierwszy commit repo to początek szablonu,
+        więc bez poprawki zgłoszenie odesłałoby szablonowi jego własne zmiany sprzed kopii."""
+        sz = self.d / "szablon"; (sz / "scripts").mkdir(parents=True)
+        (sz / "scripts" / "stary.py").write_text("print('v0')\n")
+        subprocess.run(["git", "init", "-q", "-b", "main", str(sz)], check=True); g(sz, "add", "-A"); g(sz, "commit", "-q", "-m", "szablon v0")
+        (sz / "scripts" / "stary.py").write_text("print('v0')\nprint('zmiana szablonu przed kopią')\n")
+        g(sz, "commit", "-qam", "szablon v1"); wersja = subprocess.run(["git", "-C", str(sz), "rev-parse", "HEAD"], capture_output=True,
+                                                                     text=True, check=True).stdout.strip()
+        f = self.d / "firma2"
+        subprocess.run(["git", "clone", "-q", str(sz), str(f)], check=True)
+        g(f, "remote", "remove", "origin")
+        (f / "scripts" / "stary.py").write_text((f / "scripts" / "stary.py").read_text() + "print('ulepszenie firmy')\n")
+        g(f, "commit", "-qam", "praca floty")
+        (sz / "scripts" / "nowy.py").write_text("print('szablon po kopii')\n"); g(sz, "add", "-A"); g(sz, "commit", "-q", "-m", "szablon v2")
+        # bez remote i bez znacznika: baza = pierwszy commit (za stara) z ostrzeżeniem w opisie
+        b, opis = P.baza(f)
+        self.assertNotEqual(b, wersja); self.assertIn("szablon_baza", opis)
+        # remote `szablon` (jak po scripts/aktualizuj-z-szablonu.sh --sucho): baza = ostatni commit wspólny
+        g(f, "remote", "add", "szablon", str(sz)); g(f, "fetch", "-q", "szablon")
+        b, opis = P.baza(f)
+        self.assertEqual(b, wersja); self.assertIn("szablon/main", opis)
+        zm = dict((p, d) for p, d in P.zmiany(f)[0])
+        self.assertIn("ulepszenie firmy", zm["scripts/stary.py"])
+        self.assertNotIn("+print('zmiana szablonu przed kopią')", zm["scripts/stary.py"])   # zmiana szablonu nie wraca do szablonu
+        self.assertNotIn("scripts/nowy.py", zm)                                             # ani zmiana szablonu po kopii
+        # znacznik w org.yaml działa bez remote; znacznik spoza historii HEAD jest pomijany
+        g(f, "remote", "remove", "szablon")
+        (f / "org.yaml").write_text('repo:\n  szablon_baza: "%s"\n' % wersja[:7]); g(f, "add", "org.yaml"); g(f, "commit", "-qm", "znacznik")
+        self.assertEqual(P.baza(f)[0], wersja)
+        (f / "org.yaml").write_text('repo:\n  szablon_baza: "nieistniejacy"\n'); g(f, "commit", "-qam", "zły znacznik")
+        self.assertNotEqual(P.baza(f)[0], wersja)
+
+    def test_baza_najnowszy_kandydat(self):
+        """Aktualizacja z szablonu późniejsza niż znacznik – wygrywa aktualizacja (znacznik jest jej przodkiem)."""
+        pierwszy = subprocess.run(["git", "-C", str(self.r), "rev-list", "--max-parents=0", "HEAD"], capture_output=True, text=True,
+                                  check=True).stdout.strip()
+        (self.r / "org.yaml").write_text((self.r / "org.yaml").read_text() + '  szablon_baza: "%s"\n' % pierwszy)
+        g(self.r, "commit", "-qam", "znacznik")
+        g(self.r, "checkout", "-q", "-b", "szablon-v2", pierwszy)
+        (self.r / "scripts" / "nowe.py").write_text("x\n"); g(self.r, "add", "-A"); g(self.r, "commit", "-q", "-m", "szablon v2")
+        v2 = subprocess.run(["git", "-C", str(self.r), "rev-parse", "HEAD"], capture_output=True, text=True, check=True).stdout.strip()
+        g(self.r, "checkout", "-q", "main")
+        g(self.r, "merge", "-q", "--no-ff", "-m", "szablon: aktualizacja do v2", "szablon-v2")
+        b, opis = P.baza(self.r)
+        self.assertEqual(b, v2); self.assertIn("szablon: aktualizacja", opis)
+
     def test_brak_kandydatow(self):
         r2 = self.d / "pusta"; (r2 / "scripts").mkdir(parents=True); (r2 / "scripts" / "a.py").write_text("x\n")
         subprocess.run(["git", "init", "-q", "-b", "main", str(r2)], check=True); g(r2, "add", "-A"); g(r2, "commit", "-q", "-m", "a")

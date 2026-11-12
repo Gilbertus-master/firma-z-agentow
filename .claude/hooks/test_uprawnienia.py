@@ -210,6 +210,47 @@ class Hook(unittest.TestCase):
         kod, msg, _ = self.hook("Bash", {"command": "stripe refunds create --charge ch_1"}, "finansowy")
         self.assertEqual(kod, 2); self.assertIn("kwoty", msg)
 
+    def test_nota_kredytowa_i_zwrot_mcp_bramka_kwotowa(self):
+        """Nota kredytowa = zwrot (powłoka, CLI i MCP operatora płatności); kwota = amount albo suma składników; brak kwoty = odmowa;
+        podgląd noty – nie zwrot; zwrot przez MCP – ta sama bramka i ten sam próg co w powłoce."""
+        nota = "curl https://api.stripe.com/v1/credit_notes -d invoice=in_1 "
+        self.assertEqual(self.hook("Bash", {"command": "stripe credit_notes create --invoice in_1 -d refund_amount=4465"}, "finansowy", sesja="n0")[0], 0)
+        kod, msg, _ = self.hook("Bash", {"command": nota + "-d credit_amount=3000 -d refund_amount=3000"}, "finansowy", sesja="n1")
+        self.assertEqual(kod, 2); self.assertIn("> próg", msg)                                         # 30 + 30 USD > 50
+        self.assertEqual(self.hook("Bash", {"command": nota + "-d amount=12177"}, "finansowy", sesja="n2")[0], 2)
+        self.assertEqual(self.hook("Bash", {"command": nota + "-d amount=12177"}, "finansowy", {"DECYZJA": "D-20261109-07"}, sesja="n3")[0], 0)
+        kod, msg, _ = self.hook("Bash", {"command": "stripe credit_notes create --invoice in_1"}, "finansowy", sesja="n4")
+        self.assertEqual(kod, 2); self.assertIn("kwoty", msg)
+        kod, msg, _ = self.hook("Bash", {"command": nota + "-d refund_amount=100"}, "ceo", sesja="n5")
+        self.assertEqual(kod, 2); self.assertIn("wlasciciel", msg)                                     # CEO nie jest bramką
+        self.hook("Bash", {"command": "curl https://api.stripe.com/v1/credit_notes/preview?invoice=in_1"}, "ceo", sesja="n6")
+        self.assertNotEqual(self.audyt()[-1]["czynnosc"], "zwrot_klientowi")
+        mcp = "mcp__abc__stripe_api_write"
+        wej = {"stripe_api_operation_id": "PostCreditNotes", "parameters": {"invoice": "in_1", "refund_amount": 4465}}
+        self.assertEqual(self.hook(mcp, wej, "finansowy", sesja="n7")[0], 0)
+        self.assertEqual(self.audyt()[-1]["czynnosc"], "zwrot_klientowi")
+        self.assertEqual(self.hook(mcp, wej, "ceo", sesja="n8")[0], 2)
+        self.assertEqual(self.hook(mcp, {"stripe_api_operation_id": "PostCreditNotes", "parameters": {"invoice": "in_1", "amount": 12177}},
+                                   "finansowy", sesja="n9")[0], 2)
+        self.assertEqual(self.hook(mcp, {"stripe_api_operation_id": "PostRefunds", "parameters": {"payment_intent": "pi_1", "amount": 4500}},
+                                   "finansowy", sesja="n10")[0], 0)
+        kod, msg, _ = self.hook(mcp, {"stripe_api_operation_id": "PostRefunds", "parameters": {"payment_intent": "pi_1", "amount": 9900}},
+                                "finansowy", sesja="n11")
+        self.assertEqual(kod, 2); self.assertIn("> próg", msg)
+        self.assertEqual(self.hook(mcp, {"path": "/v1/refunds", "parameters": {"charge": "ch_1"}}, "finansowy", sesja="n12")[0], 2)  # bez kwoty
+
+    def test_jeden_zwrot_na_polecenie(self):
+        """Bramka czyta jedną kwotę – drugi zwrot albo nota w tym samym poleceniu ominąłby próg, więc całe polecenie jest odmową."""
+        zwrot = "stripe refunds create --amount %d --charge ch_%d"
+        for i, cmd in enumerate((zwrot % (4500, 1) + "; " + zwrot % (990000, 2),
+                                 zwrot % (1000, 1) + " && stripe credit_notes create --invoice in_1 -d refund_amount=900000",
+                                 "curl https://api.stripe.com/v1/refunds -d amount=100 -d charge=ch_1 | "
+                                 "curl https://api.stripe.com/v1/refunds -d amount=99999 -d charge=ch_2")):
+            kod, msg, _ = self.hook("Bash", {"command": cmd}, "finansowy", sesja="w%d" % i)
+            self.assertEqual(kod, 2, cmd); self.assertIn("jeden zwrot albo jedna nota", msg)
+            self.assertEqual(self.audyt()[-1]["regula"], "zwrot_klientowi:wiele-zwrotow")
+        self.assertEqual(self.hook("Bash", {"command": zwrot % (4500, 1) + " && echo gotowe"}, "finansowy", sesja="w9")[0], 0)
+
     def test_regula_dwoch_reader_nie_placi_ale_odpowiada(self):
         kod, msg, _ = self.hook("Bash", {"command": "stripe refunds create --amount 100 --charge ch_1"}, "obsluga")
         self.assertEqual(kod, 2); self.assertIn("reguła dwóch", msg)
@@ -379,7 +420,8 @@ class Hook(unittest.TestCase):
 
     def test_pliki_sterujace_tylko_wlasciciel(self):
         chronione = ("uprawnienia.yaml", "zasady.md", "dozwolone-polecenia.txt", ".claude/settings.json", ".claude/hooks/uprawnienia.py",
-                     "polityki/progi.yaml", "bezpieczenstwo/audyt/2026-11.jsonl", "bezpieczenstwo/blokady.jsonl", ".agent-rola")
+                     "polityki/progi.yaml", "bezpieczenstwo/audyt/2026-11.jsonl", "bezpieczenstwo/blokady.jsonl", ".agent-rola",
+                     "bezpieczenstwo/zasady-skroty.json", "flota/szablony/bloki/zasady-bezpieczenstwa.md")
         for i, f in enumerate(chronione):
             pelna = str(self.tmp / f)
             for narz in ("Write", "Edit"):

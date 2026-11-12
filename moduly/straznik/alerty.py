@@ -25,8 +25,10 @@ ALERTY_PAMIEC_DNI = 3       # klucze starsze – usuwane ze stanu
 TERMIN_WPISU_MIN = 120      # „Termin:” wpisu w zlecenia/ceo.md = teraz + 2 h
 RESEND_USLUGA = "resend-api-key-straznik"
 MAIL_OD = os.environ.get("STRAZNIK_MAIL_OD", "Strażnik floty <alerty@example.com>")  # org.yaml → organizacja.domena
-MAIL_DO = os.environ.get("STRAZNIK_MAIL_DO", "ceo@example.com")
+MAIL_DO = os.environ.get("STRAZNIK_MAIL_DO", "")            # operator (org.yaml → ludzie.operator.kontakt_firmowy); pusty = brak operatora
+MAIL_WLASCICIEL = os.environ.get("STRAZNIK_MAIL_WLASCICIEL", "")  # właściciel/founder (org.yaml → ludzie.wlasciciel.kontakt_firmowy)
 MAIL_POMINIETY = "mail pominięty – brak klucza Resend"
+MAIL_BEZ_ADRESATA = "mail pominięty – poziom adresata (wpis w skrzynce wystarcza)"
 MAX_ID = 30
 STATUS_TEKST = {K.OK: "OK", K.ROZ: "ROZBIEŻNOŚĆ", K.BLAD: "BŁĄD ŹRÓDŁA"}
 
@@ -237,7 +239,7 @@ def tresc(nazwa, w, teraz):
     return "\n".join(linie)
 
 
-def wpis_ceo(nazwa, w, k, teraz):
+def wpis_ceo(nazwa, w, k, teraz, odbiorcy_=None):
     t = teraz.astimezone(K.WAW)
     termin = (t + timedelta(minutes=TERMIN_WPISU_MIN)).strftime("%Y-%m-%d %H:%M")
     opis = re.sub(r"\s+", " ", w["opis"])[:1500]
@@ -246,9 +248,12 @@ def wpis_ceo(nazwa, w, k, teraz):
         "Strażnik floty (`moduly/straznik`, przebieg %s): %s\n"
         "Liczby: %s. ID: %s.\n"
         "Stan: `ceo/straznik.json` (klon strażnika), historia: `ceo/straznik-zdarzenia.md`. Klucz strażnika: `%s`.\n"
+        "%s"
         "Termin: %s\n"
         "Odpowiedź:\n\n" % (t.strftime("%Y-%m-%d"), K.NAZWY.get(nazwa, nazwa), krotko(nazwa, w), t.strftime("%H:%M"), opis,
-                            liczby_tekst(w["liczby"]) or "–", id_tekst(w["id"]), skrot_klucza(k), termin))
+                            liczby_tekst(w["liczby"]) or "–", id_tekst(w["id"]), skrot_klucza(k),
+                            ("Adresaci alertu: %s (odpowiedź „w toku” albo w polu Odpowiedź = alarm podjęty, bez eskalacji do CEO).\n"
+                             % ", ".join(odbiorcy_)) if odbiorcy_ else "", termin))
 
 
 def wstaw_wpis_ceo(sciezka, wpis, k):
@@ -257,7 +262,7 @@ def wstaw_wpis_ceo(sciezka, wpis, k):
     sciezka = Path(sciezka)
     if not sciezka.exists():  # repo bez agenta CEO (np. świeży szablon) – strażnik zakłada skrzynkę
         sciezka.parent.mkdir(parents=True, exist_ok=True)
-        sciezka.write_text("# Zlecenia dla agenta ceo\n\nFormat: zlecenia/README.md. Najnowsze na górze.\n", encoding="utf-8")
+        sciezka.write_text("# Zlecenia dla agenta %s\n\nFormat: zlecenia/README.md. Najnowsze na górze.\n" % sciezka.stem, encoding="utf-8")
     tekst = sciezka.read_text(encoding="utf-8")
     skrot = skrot_klucza(k)
     for reszta, status, linie in K.bloki_zlecen(tekst):
@@ -273,15 +278,29 @@ def wstaw_wpis_ceo(sciezka, wpis, k):
 
 # ---------- wysyłka ----------
 
-def wyslij_mail(temat_, tresc_):
+def adresy_maila(odbiorcy_, poziom):
+    """Mail tylko od poziomu CEO: właściciel, gdy jest wśród odbiorców; operator (jeśli jest) od poziomu CEO w górę."""
+    do = []
+    if "wlasciciel" in odbiorcy_ and MAIL_WLASCICIEL:
+        do.append(MAIL_WLASCICIEL)
+    if poziom in ("ceo", "wlasciciel") and MAIL_DO and MAIL_DO not in do:
+        do.append(MAIL_DO)
+    return do
+
+
+def wyslij_mail(temat_, tresc_, do=None):
     """-> opis wyniku (do straznik.json i zdarzeń). Klucz Resend ze zmiennej STRAZNIK_RESEND_KEY albo z pęku kluczy,
-    tylko w pamięci."""
+    tylko w pamięci. do = lista adresów (domyślnie MAIL_DO); pusta – bez wysyłki."""
+    do = [MAIL_DO] if do is None else list(do)
+    do = [x for x in do if x]
+    if not do:
+        return MAIL_BEZ_ADRESATA
     klucz_api = os.environ.get("STRAZNIK_RESEND_KEY") or sekret(RESEND_USLUGA)
     if not klucz_api:
         return MAIL_POMINIETY
     req = urllib.request.Request(
         "https://api.resend.com/emails", method="POST",
-        data=json.dumps({"from": MAIL_OD, "to": [MAIL_DO], "subject": temat_, "text": tresc_}).encode(),
+        data=json.dumps({"from": MAIL_OD, "to": do, "subject": temat_, "text": tresc_}).encode(),
         headers={"Authorization": "Bearer " + klucz_api, "Content-Type": "application/json", "User-Agent": "straznik-floty"})
     try:
         with urllib.request.urlopen(req, timeout=20) as r:

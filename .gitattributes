@@ -3,3 +3,9 @@ ceo/straznik-zdarzenia.md merge=union
 bezpieczenstwo/blokady.jsonl merge=union
 bezpieczenstwo/audyt/*.jsonl merge=union
 ceo/scalanie/dziennik.jsonl merge=union
+bezpieczenstwo/skan-danych-wyjatki.tsv merge=union
+# Zasada: każdy log tylko-dopisywany (jedna linia = jeden wpis, kolejność bez znaczenia) ma merge=union – równoległe przebiegi
+# i aktualizacje z szablonu nie dają konfliktów. Nowy log = nowy wiersz tutaj i w LOGI_DOPISYWANE (scripts/test_zgodnosc.py).
+ceo/kontrole/wyniki.jsonl merge=union
+ewaluacje/wyniki/*.jsonl merge=union
+propozycje/wyslane.jsonl merge=union

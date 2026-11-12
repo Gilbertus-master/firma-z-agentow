@@ -32,6 +32,8 @@ nie wdrożenie. Każdy przebieg zaczyna się bez pamięci; stan jest w `recenzen
      `scalenie: "tak"` = wolno scalić bez dalszych warunków (tylko przy `OK` / `OK Z UWAGAMI`); `"nie"` = nie scalać (zawsze przy `ZMIANY`);
      `"warunek"` = scala dopiero CEO po spełnieniu `warunki` (lista zdań) i z wykonaniem `kroki` (czynności po scaleniu, np. wdrożenie, flaga).
      Zależność od innego PR-a zapisujesz w `warunki` dokładnie jako `po #N` albo `po <nazwa-repo>#N` – kolejka sama poczeka na jego scalenie.
+     Warunek „ten test musi przejść” zapisujesz dokładnie jako `zielony <check> na head` (nazwa checku z CI; ze spacjami – w \`…\`) –
+     kolejka sprawdzi ostatni przebieg sama i scali bez CEO. Bez dopisków: każde inne słowo w warunku = ocena CEO.
      PR z migracją: `"klasa_migracji": {"<plik migracji>": "A"|"B"}` dla każdej migracji (brak klasy liczy się jak B – decyzja właściciela).
      PR obejrzany ponownie po zmianie bazy: `"po_przepieciu": true`. Brak pola `scalenie`, wartość spoza listy albo sprzeczność z `wynik`
      → klasa NIEJASNY: PR **nie zostanie scalony**, a zlecenie uzupełnienia wraca do Ciebie. Wątpliwość = `"nie"` albo `"warunek"`,

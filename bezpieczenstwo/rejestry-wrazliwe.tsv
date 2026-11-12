@@ -1,0 +1,5 @@
+# Rejestry wrażliwe – w gicie tylko nagłówki i wiersze bez danych (scripts/rejestry-git.py, grupa w scripts/testy.sh).
+# wzorzec<TAB>reguła; wzorzec jak git :(glob); reguła: naglowek:<kol1>,<kol2>,… (TSV) albo typ:<a>,<b>,… (JSONL).
+# Przykład (odkomentuj i dostosuj):
+# rejestry/sprawy/*.tsv	naglowek:id,rodzaj,termin,status
+# rejestry/sprawy/*.jsonl	typ:zalozenie,test

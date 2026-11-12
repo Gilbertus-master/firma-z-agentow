@@ -3,6 +3,8 @@
 #
 #   scripts/przebieg.sh start <agent> <konto>   # konto floty: litera z org.yaml → runtime.konto
 #   scripts/przebieg.sh okienko <agent>         # tylko wypisuje numer okienka (bez sieci; do testów)
+#   scripts/przebieg.sh zapisz <agent> "<co>" <ścieżka>…   # koniec przebiegu: scripts/zapisz.sh "<agent>: <co>" <ścieżki>
+#                                               # (commit tylko podanych ścieżek, rebase/merge, push z ponowieniami; kody 0/1/2)
 #
 # Kody wyjścia:
 #   0  – przebieg Twój: tag przebieg/<agent>/<okienko> wypchnięty, rób pracę
@@ -25,8 +27,14 @@
 
 set -u
 
-uzycie() { echo "Użycie: $0 start <agent> <konto A-Z>  |  $0 okienko <agent>" >&2; exit 2; }
+uzycie() { echo "Użycie: $0 start <agent> <konto A-Z>  |  $0 okienko <agent>  |  $0 zapisz <agent> \"<co>\" <ścieżka>…" >&2; exit 2; }
 tryb=${1:-}
+if [ "$tryb" = zapisz ]; then
+  [ $# -ge 4 ] || uzycie
+  agent=$2; co=$3; shift 3
+  case "$agent" in *[!a-z0-9-]*|'') echo "Zła nazwa agenta: $agent" >&2; exit 2 ;; esac
+  exec "$(cd "$(dirname "$0")" && pwd)/zapisz.sh" "$agent: $co" "$@"
+fi
 case "$tryb $#" in
   "start 3") konto=$3; case "$konto" in [A-Z]) ;; *) uzycie ;; esac ;;
   "okienko 2") konto=- ;;

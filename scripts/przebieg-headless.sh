@@ -5,7 +5,7 @@
 #
 # Co robi: czyta prompt zadania (ceo/handoff/prompty/<agent>.md – generowany z flota/zadania.yaml), model i budżet
 # przebiegu z manifestu, uruchamia `claude -p` z limitem --max-budget-usd i --max-turns, a wynik JSON
-# (total_cost_usd, duration, num_turns, is_error) dopisuje do przebiegi/<agent>/koszty-<data>.jsonl i wypycha.
+# (total_cost_usd, duration, num_turns, is_error) dopisuje do przebiegi/<agent>/koszty-<data>.jsonl i zapisuje scripts/zapisz.sh (ponowienia pushu).
 # Agent sam w trakcie przebiegu pisze swoją linię kontraktu (przebiegi/<agent>/<data>.jsonl).
 # Wymagania: ANTHROPIC_API_KEY (rozliczenie api) albo zalogowane `claude` na koncie floty (`claude /login` raz na maszynie).
 # Tryb uprawnień: PRZEBIEG_TRYB=auto (klasyfikator, Claude Code ≥ 2.1.259; zalecany na serwerze) albo acceptEdits
@@ -77,6 +77,7 @@ if linia["blad"]:
 PY
 rm -f "$wynik_plik"
 
-git add "przebiegi/$agent/" >/dev/null 2>&1 && git commit -q -m "przebieg $agent: koszt" -- "przebiegi/$agent/" >/dev/null 2>&1 \
-  && { git pull --rebase -q 2>/dev/null; git push -q origin HEAD 2>/dev/null || echo "UWAGA: push kosztu nieudany (zostaje lokalnie)"; }
+# Zapis kosztu: tylko własne ścieżki, dociągnięcie zmian innych i push z ponowieniami (scripts/zapisz.sh; bez --force).
+"$repo/scripts/zapisz.sh" "przebieg $agent: koszt" "przebiegi/$agent/" \
+  || echo "UWAGA: zapis kosztu nieudany (zapisz.sh – ślad wyżej; commit zostaje lokalnie)" >&2
 exit $kod

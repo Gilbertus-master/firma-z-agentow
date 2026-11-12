@@ -708,14 +708,20 @@ class Calosc(unittest.TestCase):
                 S.main(["--dane", str(TESTDANE), "--repo", str(repo), "--teraz", "2026-11-09T13:35:00+01:00"])
             stan = json.loads((repo / "ceo" / "straznik.json").read_text())
             self.assertEqual(set(stan), {"czas", "czas_przebiegu_s", "kontrole", "alerty", "bledy_zrodel", "alert_zrodel",
-                                         "aktywne_id", "wyciszenia", "ostatni_commit_zdarzen", "mail", "alerty_przebiegu", "uwagi"})
+                                         "aktywne_id", "wyciszenia", "ostatni_commit_zdarzen", "mail", "alerty_przebiegu", "alarmy", "uwagi"})
             self.assertEqual(len(stan["alerty"]), 5)
             self.assertEqual(stan["alerty_przebiegu"], [])  # drugi przebieg po 15 min – bez nowych alertów
             zd = (repo / "ceo" / "straznik-zdarzenia.md").read_text()
             self.assertEqual(zd.count("· alert ·"), 5)
             self.assertEqual(zd.count("brak stanu → ROZBIEŻNOŚĆ"), 5)
             ceo = (repo / "zlecenia" / "ceo.md").read_text()
-            self.assertEqual(ceo.count("od: straznik · Pilne (strażnik)"), 5)
+            # adresat kontroli: PR-y → recenzent, przebieg agenta → ten agent; reszta (testflight, automaty, zlecenie z ceo.md) → CEO
+            self.assertEqual(ceo.count("od: straznik · Pilne (strażnik)"), 3)
+            self.assertIn("Pilne (strażnik) · PR-y", (repo / "zlecenia" / "recenzent.md").read_text())
+            self.assertIn("Pilne (strażnik) · Przebiegi", (repo / "zlecenia" / "obsluga.md").read_text())
+            self.assertNotIn("PR-y", ceo)
+            self.assertEqual({n: a["stan"] for n, a in stan["alarmy"].items()},
+                             {"przebiegi": "otwarty", "pr": "otwarty", "testflight": "otwarty", "automaty": "otwarty", "zlecenia": "otwarty"})
             self.assertLess(ceo.index("od: straznik"), ceo.index("od: pm"))
 
 
@@ -742,7 +748,7 @@ class GitIZdarzeniaCoGodzine(unittest.TestCase):
             stare = (Z.pobierz_zewnetrzne, A.powiadom, A.wyslij_mail)
             Z.pobierz_zewnetrzne = lambda repo: zewn
             A.powiadom = lambda tekst: "powiadomienie (test)"
-            A.wyslij_mail = lambda temat, tresc: A.MAIL_POMINIETY
+            A.wyslij_mail = lambda temat, tresc, **kw: A.MAIL_POMINIETY
             self.addCleanup(lambda: (setattr(Z, "pobierz_zewnetrzne", stare[0]), setattr(A, "powiadom", stare[1]),
                                      setattr(A, "wyslij_mail", stare[2])))
             import io
@@ -812,7 +818,7 @@ class KlonWymagaUwagi(unittest.TestCase):
             stare = (Z.pobierz_zewnetrzne, A.powiadom, A.wyslij_mail)
             Z.pobierz_zewnetrzne = lambda repo: zewn
             A.powiadom = lambda tekst: powiadomienia.append(tekst) or "powiadomienie (test)"
-            A.wyslij_mail = lambda temat, tresc: A.MAIL_POMINIETY
+            A.wyslij_mail = lambda temat, tresc, **kw: A.MAIL_POMINIETY
             self.addCleanup(lambda: (setattr(Z, "pobierz_zewnetrzne", stare[0]), setattr(A, "powiadom", stare[1]),
                                      setattr(A, "wyslij_mail", stare[2])))
             import io
@@ -1186,6 +1192,39 @@ class OpcjeKonfiguracji(unittest.TestCase):
         dane = Z.zloz(TESTDANE / "repo", TESTDANE / "zadania", z)
         w = K.uruchom_wszystkie(dane, self.T, Z.KONTROLE_AKTYWNE)
         self.assertEqual(sorted(w), sorted(Z.KONTROLE_RDZEN))
+
+
+@unittest.skipUnless(shutil.which("plutil") and os.path.exists("/usr/libexec/PlistBuddy"), "instalator launchd – tylko macOS")
+class Instalator(unittest.TestCase):
+    """Ponowna instalacja (instaluj.sh) zachowuje adresy maili alertów z dotychczasowego plist; nowa wartość je zastępuje."""
+
+    def test_adresy_maili_zostaja_przy_ponownej_instalacji(self):
+        d = Path(tempfile.mkdtemp(prefix="straznik-inst-"))
+        try:
+            g = lambda *a: subprocess.run(["git", *a], check=True, capture_output=True,
+                                          env=dict(os.environ, GIT_CONFIG_GLOBAL=os.devnull, GIT_CONFIG_NOSYSTEM="1"))
+            zrodlo = d / "zrodlo"; (zrodlo / "moduly" / "straznik").mkdir(parents=True)
+            shutil.copy(TU / "straznik.plist.szablon", zrodlo / "moduly" / "straznik")
+            g("init", "-q", str(zrodlo)); g("-C", str(zrodlo), "add", "-A")
+            g("-C", str(zrodlo), "-c", "user.name=t", "-c", "user.email=t@example.com", "commit", "-qm", "x")
+            g("clone", "-q", str(zrodlo), str(d / "klon"))
+            bin_ = d / "bin"; bin_.mkdir()
+            (bin_ / "launchctl").write_text("#!/bin/sh\nexit 0\n"); (bin_ / "launchctl").chmod(0o755)
+            env = {k: v for k, v in os.environ.items() if not k.startswith("STRAZNIK_")}
+            env.update(HOME=str(d / "dom"), PATH=str(bin_) + os.pathsep + env.get("PATH", ""), STRAZNIK_REPO=str(d / "klon"),
+                       GIT_CONFIG_GLOBAL=os.devnull, GIT_CONFIG_NOSYSTEM="1")
+            plist = d / "dom" / "Library" / "LaunchAgents" / "org.agenci.straznik.plist"
+
+            def instaluj(**zm):
+                subprocess.run(["bash", str(TU / "instaluj.sh")], check=True, capture_output=True, env=dict(env, **zm))
+                return plist.read_text()
+            self.assertIn("ceo@firma.example", instaluj(STRAZNIK_MAIL_DO="ceo@firma.example", STRAZNIK_MAIL_OD="alerty@firma.example"))
+            t = instaluj()                                                           # bez zmiennych – adresy z poprzedniego plist
+            self.assertIn("ceo@firma.example", t); self.assertIn("alerty@firma.example", t)
+            t = instaluj(STRAZNIK_MAIL_DO="operator@firma.example")                   # nowa wartość zastępuje, druga zostaje
+            self.assertIn("operator@firma.example", t); self.assertNotIn("ceo@firma.example", t); self.assertIn("alerty@firma.example", t)
+        finally:
+            shutil.rmtree(d, ignore_errors=True)
 
 
 if __name__ == "__main__":

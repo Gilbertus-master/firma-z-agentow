@@ -15,6 +15,8 @@ Bramki deterministyczne (uprawnienia.yaml → `bramka:`): `kwota` (kwota z polec
 `pr` (o scaleniu decyduje kolejka: `scripts/scalanie.py` → `bramka` – tylko polecenie z tabeli, dla aktualnego commita,
 pod blokadą scalania; klasa GOTOWY dla każdej roli, pozostałe tylko CEO; opis: ceo/scalanie/README.md).
 Polecenie złożone (`a && b`, `a; b`, `a | b`, `$(a)`): sprawdzany jest każdy człon osobno – jedna odmowa blokuje całość.
+Zwrot = także nota kredytowa i zwrot/nota przez MCP operatora płatności (ten sam próg kwotowy); więcej niż jeden zwrot albo nota
+w jednym poleceniu = odmowa (bramka czyta jedną kwotę).
 Kill switch: plik `bezpieczenstwo/HALT` (treść = powód) → każde narzędzie poza odczytem zablokowane, sesja zatrzymana.
 BLOKOWANIE DOMYŚLNE: wolno tylko to, co jest na liście `dozwolone-polecenia.txt` (polecenia Bash, narzędzia wbudowane,
 wzorce narzędzi MCP) albo jest czynnością z `uprawnienia.yaml`, do której rola ma prawo. Polecenie spoza listy = czynność
@@ -69,6 +71,9 @@ WZORCE_BASH = [
     (r"\b(psql|supabase\s+db\s+execute)\b[^|;&]*\b(ALTER|CREATE|INSERT|UPDATE)\b", "migracja_zgodna_wstecz"),
     (r"api\.resend\.com/(emails|broadcasts)", "wysylka_maila"),
     (r"api\.stripe\.com/v1/refunds|\bstripe\s+refunds\s+create\b", "zwrot_klientowi"),
+    # nota kredytowa = zwrot (zwraca albo zalicza pieniądze klientowi); podgląd (/preview) i odczyt (GET) – nie
+    (r"api\.stripe\.com/v1/credit_notes(?!/preview)[^|;&]*(?:-X\s*POST|\s-d\s|\s--data|\s-F\s)|\bstripe\s+credit_notes\s+create\b",
+     "zwrot_klientowi"),
     (r"api\.stripe\.com/v1/(prices|products|coupons)[^|;&]*(-X\s*(POST|DELETE)|-d\s)|\bstripe\s+(prices|products|coupons)\s+(create|update|delete)\b", "zmiana_cen"),
     (r"api\.stripe\.com/v1/(transfers|payouts)|\bstripe\s+(transfers|payouts)\s+create\b", "przelew"),
     (r"\b(xcrun\s+altool|fastlane\s+(deliver|supply|pilot)|eas\s+submit)\b", "wydanie_w_sklepach"),
@@ -88,6 +93,11 @@ WZORCE_MCP = [
     (r"__(trash_|delete_|remove-contact|remove-segment|remove-template|remove-topic|remove-automation)", "kasowanie_danych_osobowych"),
     (r"__(mark_.*spam|label_|unlabel_|update_message_labels|create_label|update_label|add-suppression|batch-add-suppressions)", "zmiana_ustawien_uslugi"),
 ]
+# Zwrot i nota kredytowa przez MCP operatora płatności (ID operacji albo ścieżka API) – ta sama bramka kwotowa co w powłoce.
+OPERATORZY_PLATNOSCI = ("stripe",)
+RE_ZWROT_MCP = re.compile(r'"(?:PostRefunds|PostCreditNotes)"|"/v1/(?:refunds|credit_notes)"')
+# Każdy zwrot albo nota w tekście polecenia – bramka czyta jedną kwotę, więc drugi zwrot w tym samym poleceniu = odmowa.
+RE_ZWROT_W_TEKSCIE = re.compile(r"\brefunds\s+create\b|/v1/refunds\b|\bcredit[_-]?notes\s+create\b|/v1/credit_notes\b(?!/preview)", re.I)
 NARZEDZIA_ODCZYTU = {"Read", "Glob", "Grep", "LS", "WebFetch", "WebSearch", "TodoRead", "TaskList", "TaskGet", "ToolSearch"}
 
 
@@ -205,7 +215,8 @@ INTERPRETERY = {"node", "deno", "bun", "perl", "ruby", "php", "psql", "sqlite3",
 POLECENIA_CZYNNOSCI = {"gh", "fly", "flyctl", "vercel", "wrangler", "netlify", "supabase", "psql", "stripe", "xcrun",
                        "fastlane", "eas", "ssh", "scp", "curl", "wget"}
 CHRONIONE_PLIKI = (".claude/settings.json", ".claude/settings.local.json", "uprawnienia.yaml", "zasady.md", PLIK_LISTY,
-                   "polityki/progi.yaml", "bezpieczenstwo/blokady.jsonl", ".agent-rola")
+                   "polityki/progi.yaml", "bezpieczenstwo/blokady.jsonl", ".agent-rola",
+                   "bezpieczenstwo/zasady-skroty.json", "flota/szablony/bloki/zasady-bezpieczenstwa.md")
 CHRONIONE_KATALOGI = (".claude/hooks", "bezpieczenstwo/audyt")
 CHRONIONE_RODZICE = (".", ".claude", ".claude/hooks", "bezpieczenstwo", "bezpieczenstwo/audyt", "polityki", "decyzje")
 
@@ -974,6 +985,8 @@ def czynnosc_z_wejscia(narzedzie, wejscie, repo, cwd, lista):
     if narzedzie in NARZEDZIA_ODCZYTU:
         return [], ""
     if narzedzie.startswith("mcp__"):
+        if any(o in narzedzie for o in OPERATORZY_PLATNOSCI) and RE_ZWROT_MCP.search(json.dumps(wejscie, ensure_ascii=False)):
+            return [("CZYNNOSC", "zwrot_klientowi", narzedzie)], narzedzie   # przed ogólnym „zapis w usłudze”
         for wzor, cz in WZORCE_MCP:
             if re.search(wzor, narzedzie):
                 return [("CZYNNOSC", cz, narzedzie)], narzedzie
@@ -995,18 +1008,46 @@ def czynnosc_z_wejscia(narzedzie, wejscie, repo, cwd, lista):
     return _spoza("narzędzie „%s”%s" % (narzedzie, " (brak pliku %s)" % PLIK_LISTY if brak else "")), ""
 
 
+RE_NOTA = re.compile(r"credit[_-]?notes\b(?!/preview)", re.I)
+SKLADNIKI_NOTY = ("credit_amount", "refund_amount", "out_of_band_amount")
+
+
+def _kwota_klucza(tekst, klucz):
+    """Liczba przy kluczu: -d k=…, --k-z-myslnikami …, JSON "k": … (`amount` nie łapie `refund_amount` ani `lines[0][amount]`)."""
+    m = re.search(r"(?<![\w\[-])(?:--)?(?:%s|%s)(?:\"?\s*:\s*\"?|=|\s+)(\d+(?:\.\d+)?)" % (klucz, klucz.replace("_", "-")), tekst)
+    return float(m.group(1)) if m else None
+
+
+def kwota_noty(tekst):
+    """Kwota noty kredytowej: `amount`, a bez niego suma składników (credit/refund/out_of_band_amount); przy obu – większa.
+    Brak = None (odmowa jak przy zwrocie bez kwoty). Jednostka jak w poleceniu."""
+    a = _kwota_klucza(tekst, "amount")
+    cz = [v for v in (_kwota_klucza(tekst, k) for k in SKLADNIKI_NOTY) if v is not None]
+    if a is None and not cz:
+        return None
+    return max(a or 0.0, sum(cz))
+
+
 def kwota_z_wejscia(narzedzie, wejscie, szczegol):
-    """Kwota w USD z polecenia (stripe --amount w centach; -d amount=; JSON amount) albo z wejścia MCP. None = nieznana."""
+    """Kwota w USD z polecenia (stripe --amount w centach; -d amount=; JSON amount) albo z wejścia MCP (także `parameters`).
+    Nota kredytowa – kwota_noty. None = nieznana."""
+    tekst_mcp = "" if narzedzie == "Bash" else json.dumps(wejscie, ensure_ascii=False)
+    if RE_NOTA.search(szczegol if narzedzie == "Bash" else tekst_mcp):
+        v = kwota_noty(szczegol if narzedzie == "Bash" else tekst_mcp)
+        centy = re.search(r"\bstripe\b|api\.stripe\.com", szczegol) if narzedzie == "Bash" else "stripe" in narzedzie
+        return None if v is None else (v / 100 if centy else v)
     if narzedzie == "Bash":
         m = re.search(r"(?:--amount[= ]|amount=|\"amount\"\s*:\s*)(\d+(?:\.\d+)?)", szczegol)
         if not m:
             return None
         v = float(m.group(1))
         return v / 100 if re.search(r"\bstripe\b|api\.stripe\.com", szczegol) else v
-    for k in ("amount", "kwota", "amount_usd", "refund_amount"):
-        v = wejscie.get(k)
-        if isinstance(v, (int, float)):
-            return float(v) / 100 if "stripe" in narzedzie else float(v)
+    parametry = wejscie.get("parameters") if isinstance(wejscie.get("parameters"), dict) else {}
+    for zrodlo in (wejscie, parametry):
+        for k in ("amount", "kwota", "amount_usd", "refund_amount"):
+            v = zrodlo.get(k)
+            if isinstance(v, (int, float)):
+                return float(v) / 100 if "stripe" in narzedzie else float(v)
     return None
 
 
@@ -1249,6 +1290,13 @@ def main():
             return 2
         u = uprawnienia.get(cz, {})
         czy_cz = rodz == "CZYNNOSC"
+        if czy_cz and cz == "zwrot_klientowi" and narzedzie == "Bash" and len(RE_ZWROT_W_TEKSCIE.findall(szczegol)) > 1:
+            rekord.update({"decyzja": "deny", "regula": "zwrot_klientowi:wiele-zwrotow", "decyzja_id": decyzja})
+            zapisz_audyt(repo, teraz, rekord, ogon)                # kwota jest czytana z pierwszego zwrotu – drugi ominąłby próg
+            zapisz_blokade(repo, r, narzedzie, cz, szczegol)
+            print("ZABLOKOWANE: „zwrot_klientowi” – jeden zwrot albo jedna nota na polecenie (bramka kwotowa czyta jedną kwotę).%s"
+                  % dalsza, file=sys.stderr)
+            return 2
         kw = kwota_z_wejscia(narzedzie, wejscie, szczegol) if czy_cz and u.get("bramka") == "kwota" else None
         bramka_pr = bramka_scalania(repo, szczegol, r, decyzja) if czy_cz and u.get("bramka") == "pr" else None
         wolno, komunikat, reg = decyduj(rodz, cz, uprawnienia, r, decyzja, kw, progi, bramka_pr)

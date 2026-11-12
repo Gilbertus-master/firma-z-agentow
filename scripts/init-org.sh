@@ -167,3 +167,12 @@ cat <<EOF
  5. Progi (polityki/progi.yaml) i cele organizacji – CEO poprosi o brakujące w pierwszym przebiegu.
  6. $DZIEL_KOM
 EOF
+# Edycja publiczna (eksport ustawia adres repo wydawcy): prośba o zgłoszenie projektu – zasada współpracy, nie warunek licencji.
+ZGLOS_PROJEKT="Gilbertus-master/firma-z-agentow"
+if [ -n "$ZGLOS_PROJEKT" ]; then
+  cat <<EOF
+ 7. Zgłoś swój projekt wydawcy / Register your project (zasada współpracy, nie warunek licencji / a collaboration rule, not a licence term):
+    https://github.com/$ZGLOS_PROJEKT/issues/new?template=zgloszenie-projektu.md
+    Uwagi i odkrycia / feedback and discoveries: README, „Jak wysyłać uwagi i odkrycia do wydawcy” / "How to send feedback and discoveries".
+EOF
+fi

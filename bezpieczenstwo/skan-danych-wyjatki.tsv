@@ -1,0 +1,9 @@
+# Wyjątki skanera danych osobowych (scripts/skan-danych.py): plik<TAB>kategoria<TAB>sha256 wartości<TAB>powód.
+# Skrót: sha256 wartości bez białych znaków, małymi literami – nigdy sama wartość. Tylko dane fikcyjne w testach, adresy
+# przykładowe i dane podane do publikacji przez samą osobę; przegląd przy próbce kwartalnej. Plik łączony merge=union.
+PRYWATNOSC.md	EMAIL	1e8df04ade373b91b8be2536170b9aa519641bf338123dce0b2d3ed6ee0756be	adres kontaktowy wydawcy podany przez właściciela do publikacji
+NOTICE	EMAIL	1e8df04ade373b91b8be2536170b9aa519641bf338123dce0b2d3ed6ee0756be	adres kontaktowy wydawcy podany przez właściciela do publikacji
+recenzent/skrypty/test_skan.sh	PESEL	81e206bce1d191db06431fe060144d2e1a655895f5d9f92b1f62ad3f2b911e85	dane fikcyjne w teście bramki danych albo skanera
+recenzent/skrypty/test_skan.sh	TELEFON	d2b51310dca85a7fc078903c9adc195f43c9167dce7afc82074fe8c2878fa353	dane fikcyjne w teście bramki danych albo skanera
+scripts/test_wymiana.py	IBAN	2982429976f233f85ab9d7b914f20c2e2f5bfc66a9be04c5dd8234ddfd00537c	dane fikcyjne w teście bramki danych albo skanera
+scripts/test_wymiana.py	TELEFON	128890298a4d3c721575d9f86bed938fc939322b3d01e1fab1bf2e3b0ca2d5ae	dane fikcyjne w teście bramki danych albo skanera

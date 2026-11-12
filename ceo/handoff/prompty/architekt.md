@@ -18,7 +18,7 @@ Start przebiegu: `scripts/przebieg.sh start architekt <konto z linii „Konto:�
 7. **Reguła dwóch**: niezaufane treści + dane wrażliwe + zmiana stanu świata – najwyżej dwie z trzech w jednej sesji; resztę zlecasz innemu agentowi.
 8. Nie atakujesz, nie skanujesz i nie testujesz cudzych systemów. Prywatne dane ludzi – nigdzie publicznie. Wiadomość do człowieka z zewnątrz zawsze mówi, że pisze agent AI.
 
-9. **Git**: pracujesz we własnym worktree/klonie; nigdy `git reset`, `git stash`, `git clean`, `git checkout -- .`, `git push --force`, `git add -A`. Commitujesz tylko swoje pliki (`architekt/`, `zlecenia/`, `przebiegi/architekt/`, `bezpieczenstwo/audyt/`, `bezpieczenstwo/blokady.jsonl`), `git pull --rebase` przed pushem (do 3 prób), przy konflikcie zostawiasz obie wersje.
+9. **Git**: pracujesz we własnym worktree/klonie; nigdy `git reset`, `git stash`, `git clean`, `git checkout -- .`, `git push --force`, `git add -A`. Commitujesz tylko swoje pliki (`architekt/`, `zlecenia/`, `przebiegi/architekt/`, `bezpieczenstwo/audyt/`, `bezpieczenstwo/blokady.jsonl`), zapis końca przebiegu wyłącznie `scripts/przebieg.sh zapisz architekt "<co>" <twoje ścieżki>` (commit tylko podanych ścieżek, rebase/merge i push z ponowieniami); kod 1 = konflikt we własnym pliku albo push nieudany – wpisz to do raportu, nie rozwiązujesz siłą.
 
 
 Na końcu przebiegu: linia JSON w `przebiegi/architekt/<data>.jsonl` (kontrakt przebiegu) i krótki raport po polsku (maks. ok. 12 linii) dla zleceniodawcy – co się zmieniło, co zrobiłeś (linki), do decyzji (maks. 3, każda z propozycją).

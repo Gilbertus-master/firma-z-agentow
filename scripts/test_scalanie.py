@@ -1874,6 +1874,8 @@ class Wywolanie(PrzezMain, Zapisy):
 
 SZKIELET = ("scripts/scalanie.py", "ceo/scalanie/stan.json", "ceo/scalanie/wstrzymane.json", "ceo/scalanie/dziennik.jsonl",
             "ceo/scalanie/ustawienia.yaml", "zlecenia/README.md")
+STAN_PUSTY = {"ceo/scalanie/stan.json": '{\n "przepiete": {},\n "zgloszone": {}\n}\n', "ceo/scalanie/dziennik.jsonl": "",
+              "ceo/scalanie/wstrzymane.json": '{\n "wstrzymane": {},\n "zwolnione": []\n}\n'}
 AUTOR = ("Flota Testowa", "flota@example.invalid")
 SZKIELET_OPIS = "szkielet organizacji"
 
@@ -1898,7 +1900,10 @@ class UkladFloty(PrzezMain, Zapisy):
         self.podpisz(self.inny, "Inna Sesja", "inna@example.invalid")
         for rel in SZKIELET:
             (self.inny / rel).parent.mkdir(parents=True, exist_ok=True)
-            shutil.copyfile(TU.parent / rel, self.inny / rel)
+            if rel in STAN_PUSTY:      # stan kolejki z pustą historią – nie z repo organizacji, w którym są prawdziwe scalenia
+                (self.inny / rel).write_text(STAN_PUSTY[rel], encoding="utf-8")
+            else:
+                shutil.copyfile(TU.parent / rel, self.inny / rel)
         for rel, tresc in (("org.yaml", ORG_YAML), ("role/inzynier.md", "# Inżynier\n"),
                            ("recenzent/stan.json", json.dumps({"recenzje": {"12": werdykt()}}) + "\n")):
             (self.inny / rel).parent.mkdir(parents=True, exist_ok=True)
@@ -2644,3 +2649,104 @@ class ZatrzymanieAwaryjne(UkladFloty):
         self.assertIsNone(S.stop_awaryjny(obok))
         (obok / "bezpieczenstwo" / "HALT").write_text("stop „teraz” `rm -rf`\n", encoding="utf-8")
         self.assertEqual(S.stop_awaryjny(obok), "stop „teraz” ?rm -rf?")       # treść pliku to dane – oczyszczona
+
+
+def run(nazwa, wynik, start, wf="Testy", **kw):
+    """Jeden przebieg checku w kształcie statusCheckRollup (CheckRun); wynik None = w toku."""
+    c = {"__typename": "CheckRun", "name": nazwa, "workflowName": wf, "startedAt": start,
+         "completedAt": "0001-01-01T00:00:00Z" if wynik is None else start}
+    c.update({"status": "IN_PROGRESS"} if wynik is None else {"status": "COMPLETED", "conclusion": wynik})
+    c.update(kw)
+    return c
+
+
+class OstatniPrzebiegChecku(unittest.TestCase):
+    """CI liczone z OSTATNIEGO przebiegu każdego checku (workflow + nazwa) – stare czerwone sprzed ponowienia nie blokują."""
+
+    def ci(self, checki):
+        return S.ci(pr(ci=checki), R1, kon().ust)[0]
+
+    def test_regresja_stary_czerwony_nowszy_zielony_to_zielony(self):
+        checki = [run("testy", "FAILURE", "2026-11-12T06:50:00Z"), run("testy", "FAILURE", "2026-11-12T07:05:00Z"),
+                  run("testy", "SUCCESS", "2026-11-12T07:34:00Z")]
+        self.assertEqual(self.ci(checki), "OK")
+        self.assertEqual(Klasyfikacja.kl(Klasyfikacja(), pr(ci=checki)), ("GOTOWY", ""))
+
+    def test_nowszy_czerwony_po_zielonym_to_czerwony(self):
+        self.assertEqual(self.ci([run("testy", "SUCCESS", "2026-11-12T07:00:00Z"), run("testy", "FAILURE", "2026-11-12T07:10:00Z")]),
+                         "CZERWONE")
+
+    def test_niezakonczony_po_czerwonym_to_w_toku(self):
+        self.assertEqual(self.ci([run("testy", "FAILURE", "2026-11-12T07:00:00Z"), run("testy", None, "0001-01-01T00:00:00Z")]),
+                         "TRWA")
+
+    def test_remis_czasu_to_czerwony(self):
+        t = "2026-11-12T07:00:00Z"
+        self.assertEqual(self.ci([run("testy", "SUCCESS", t), run("testy", "FAILURE", t)]), "CZERWONE")
+        self.assertEqual(self.ci([run("testy", "FAILURE", t), run("testy", "SUCCESS", t)]), "CZERWONE")
+
+    def test_brak_czasu_przy_kilku_przebiegach_to_czerwony(self):
+        self.assertEqual(self.ci([run("testy", "FAILURE", ""), run("testy", "SUCCESS", "2026-11-12T07:34:00Z")]), "CZERWONE")
+        self.assertEqual(self.ci([{"name": "testy", "conclusion": "SUCCESS"}]), "OK")      # jeden przebieg bez czasu – bez zmian
+
+    def test_status_context_kluczem_jest_context(self):
+        stary = {"__typename": "StatusContext", "context": "ci/zewn", "state": "FAILURE", "startedAt": "2026-11-12T06:00:00Z"}
+        nowy = dict(stary, state="SUCCESS", startedAt="2026-11-12T07:00:00Z")
+        self.assertEqual(self.ci([stary, nowy]), "OK")
+
+    def test_ta_sama_nazwa_w_dwoch_workflowach_to_dwa_checki(self):
+        checki = [run("build", "FAILURE", "2026-11-12T07:00:00Z", wf="Android"), run("build", "SUCCESS", "2026-11-12T07:30:00Z", wf="iOS")]
+        self.assertEqual(self.ci(checki), "CZERWONE")
+        self.assertEqual(S.ci(pr(ci=checki), R1, kon().ust)[1], ["build"])
+
+    def test_startup_failure_jest_czerwone(self):
+        self.assertEqual(self.ci([run("testy", "STARTUP_FAILURE", "2026-11-12T07:00:00Z")]), "CZERWONE")
+
+
+class WarunekZielonyCheck(unittest.TestCase):
+    """Warunek maszynowy „zielony <check> na head” – spełniony = bez CEO; każda inna postać zostaje WARUNKIEM."""
+
+    def kl(self, warunki, checki):
+        w = werdykt(scalenie="warunek", warunki=warunki)
+        return Klasyfikacja.kl(Klasyfikacja(), pr(ci=checki), w=w)
+
+    ZIELONE = [run("testy", "SUCCESS", "2026-11-12T07:00:00Z"), run("e2e", "SUCCESS", "2026-11-12T07:05:00Z", wf="Smoke")]
+
+    def test_spelniony_bez_ceo(self):
+        self.assertEqual(self.kl(["zielony e2e na head"], self.ZIELONE), ("GOTOWY", ""))
+        self.assertEqual(self.kl(["zielony `Smoke / e2e` na head"], self.ZIELONE), ("GOTOWY", ""))
+        self.assertEqual(self.kl(["Zielony testy na head", "zielony e2e na head"], self.ZIELONE), ("GOTOWY", ""))
+
+    def test_spelniony_po_ponowieniu(self):
+        checki = self.ZIELONE + [run("e2e", "FAILURE", "2026-11-12T06:00:00Z", wf="Smoke")]
+        self.assertEqual(self.kl(["zielony e2e na head"], checki), ("GOTOWY", ""))
+
+    def test_nieobecny_check_to_warunek(self):
+        kl, uw = self.kl(["zielony migracje na head"], self.ZIELONE)
+        self.assertEqual(kl, "WARUNEK")
+        self.assertIn("check migracje nieobecny na head", uw)
+
+    def test_czerwony_check_zatrzymuje(self):
+        checki = [run("testy", "SUCCESS", "2026-11-12T07:00:00Z"), run("e2e", "FAILURE", "2026-11-12T07:05:00Z")]
+        self.assertEqual(self.kl(["zielony e2e na head"], checki)[0], "CI_CZERWONE")
+        k = kon()
+        w = werdykt(scalenie="warunek", warunki=["zielony e2e na head"])
+        self.assertEqual(S.werdykt_pol(w, R1, k, pr(ci=checki))[0], "WARUNEK")
+
+    def test_pominiety_albo_neutralny_nie_jest_zielony(self):
+        checki = [run("testy", "SUCCESS", "2026-11-12T07:00:00Z"), run("e2e", "SKIPPED", "2026-11-12T07:05:00Z")]
+        self.assertEqual(self.kl(["zielony e2e na head"], checki)[0], "WARUNEK")
+
+    def test_dopisek_prozy_to_warunek(self):
+        for wr in ("zielony e2e na head i zgoda właściciela", "zielony e2e na head; potem wdrożenie", "zielony e2e na produkcji",
+                   "select count(*) from x na produkcji = 0", "po zielonym e2e"):
+            with self.subTest(wr):
+                self.assertEqual(self.kl([wr], self.ZIELONE)[0], "WARUNEK")
+
+    def test_bez_pr_warunek_zostaje_do_oceny(self):
+        w = werdykt(scalenie="warunek", warunki=["zielony e2e na head"])
+        self.assertEqual(S.werdykt_pol(w, R1, kon())[0], "WARUNEK")
+
+    def test_kroki_zawsze_do_ceo(self):
+        w = werdykt(scalenie="warunek", warunki=["zielony e2e na head"], kroki=["włącz flagę"])
+        self.assertEqual(Klasyfikacja.kl(Klasyfikacja(), pr(ci=self.ZIELONE), w=w)[0], "WARUNEK")

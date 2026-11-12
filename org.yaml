@@ -16,6 +16,7 @@ repo:
   produkt: []                                    # repozytoria kodu produktu, np. ["OWNER/nowa-firma-app"]
   szablon: "Gilbertus-master/firma-z-agentow"        # upstream szablonu (OWNER/repo albo pełny URL) – scripts/aktualizuj-z-szablonu.sh, procesy/05
   szablon_kanal: "stabilny"         # aktualizacje z szablonu: stabilny (najnowsze wydanie v*) | glowny (gałąź główna – beta)
+  szablon_baza: ""                 # opcjonalnie: SHA albo tag wersji szablonu, od której firma wystartowała (scripts/propozycje.py → baza)
   dziel_sie_ulepszeniami: false    # zgłaszanie uogólnionych ulepszeń floty do wydawcy szablonu (scripts/propozycje.py); domyślnie WYŁĄCZONE – wysłana treść jest udostępniana na Apache-2.0 (sekcja 5 licencji): README, „Dzielenie się ulepszeniami”
   skrzynka_propozycji: ""          # prywatne repo-skrzynka (OWNER/repo); puste = repo szablonu, które jest publiczne
   dziel_sie_decyzja: ""            # identyfikator decyzji właściciela (D-…) o dzieleniu się; wymagany przy wysyłce do wspólnego repo szablonu
@@ -78,3 +79,7 @@ straznik:
   # pomin_tytul: '^\[wstrzymane'
   # Gdzie działa: "actions" (.github/workflows/straznik.yml, co 15 min, bez laptopa) albo "launchd" (moduly/straznik/instaluj.sh).
   uruchamianie: "actions"
+  # Adresaci alertów (moduly/straznik/README.md, „Adresaci i eskalacja”): domyślnie pr → recenzent, zlecenia → adresat
+  # zlecenia, przebiegi/martwe → agent, reszta → ceo; CEO dostaje kopię przy 2. przypomnieniu, właściciel – gdy stoi CEO
+  # albo kończy się budżet. Nadpisanie: {kontrola: adresat} albo {kontrola: {adresat: …, reakcja_min: …}}.
+  # adresaci: {pr: recenzent}

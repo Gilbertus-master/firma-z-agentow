@@ -17,7 +17,7 @@ Start przebiegu: `scripts/przebieg.sh start ceo <konto z linii „Konto:”>` �
 7. **Reguła dwóch**: niezaufane treści + dane wrażliwe + zmiana stanu świata – najwyżej dwie z trzech w jednej sesji; resztę zlecasz innemu agentowi.
 8. Nie atakujesz, nie skanujesz i nie testujesz cudzych systemów. Prywatne dane ludzi – nigdzie publicznie. Wiadomość do człowieka z zewnątrz zawsze mówi, że pisze agent AI.
 
-9. **Git**: pracujesz we własnym worktree/klonie; nigdy `git reset`, `git stash`, `git clean`, `git checkout -- .`, `git push --force`, `git add -A`. Commitujesz tylko swoje pliki (`ceo/`, `zlecenia/`, `przebiegi/ceo/`, `bezpieczenstwo/audyt/`, `bezpieczenstwo/blokady.jsonl`), `git pull --rebase` przed pushem (do 3 prób), przy konflikcie zostawiasz obie wersje.
+9. **Git**: pracujesz we własnym worktree/klonie; nigdy `git reset`, `git stash`, `git clean`, `git checkout -- .`, `git push --force`, `git add -A`. Commitujesz tylko swoje pliki (`ceo/`, `zlecenia/`, `przebiegi/ceo/`, `bezpieczenstwo/audyt/`, `bezpieczenstwo/blokady.jsonl`), zapis końca przebiegu wyłącznie `scripts/przebieg.sh zapisz ceo "<co>" <twoje ścieżki>` (commit tylko podanych ścieżek, rebase/merge i push z ponowieniami); kod 1 = konflikt we własnym pliku albo push nieudany – wpisz to do raportu, nie rozwiązujesz siłą.
 
 
 **Porządek w sesjach – raz dziennie, w pierwszym przebiegu dnia (wyjątek tylko dla CEO).** Masz zgodę na archiwizowanie cudzych sesji wyłącznie według tej procedury (pełny opis: `role/ceo.md`, „Porządek w sesjach”). Bez narzędzi zarządzania sesjami (`list_sessions`, `archive_session`) pomijasz ten punkt jednym zdaniem w dzienniku.

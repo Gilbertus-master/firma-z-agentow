@@ -77,6 +77,8 @@ RE_KLUCZ = re.compile(r"^(?:([\w.-]+)#)?(\d+)$")
 RE_TOKEN = re.compile(r"^[0-9a-f]{16}$")
 RE_KTO = re.compile(r"^[a-z0-9][a-z0-9-]{0,39}$")
 RE_PO = re.compile(r"^po\s+(?:([\w.-]+(?:/[\w.-]+)?)#|#)?(\d+)$", re.I)
+# warunek maszynowy „zielony <check> na head” – cały warunek musi pasować (fullmatch); nazwa ze spacjami w `…`
+RE_CHECK = re.compile(r"zielony\s+(?:`([^`\n]{1,100})`|([\w./:-]{1,100}))\s+na\s+head", re.I)
 RE_STOP = re.compile(r"nie\s+scala[ćc]|do\s+not\s+merge|\bDNM\b|\bWIP\b|czeka\s+na\s+decyzj|wymaga\s+zgody|bez\s+zgody", re.I)
 RE_STOP_TRESC = re.compile(r"nie\s+scala[ćc]|do\s+not\s+merge|czeka\s+na\s+decyzj", re.I)   # opis PR-a: tylko jednoznaczne zwroty
 RE_BRAK_PR = re.compile(r"could not resolve|not found|no pull requests", re.I)
@@ -483,13 +485,58 @@ def wersje_migracji(sciezki_, ust):
     return wyn
 
 
-def ci(pr, repo_gh, ust):
-    """-> (OK | BRAK | CZERWONE | TRWA, nazwy czerwonych checków). Pusta lista checków to BRAK, nie zielone."""
-    stany, zle = [], []
-    for c in pr.get("statusCheckRollup") or []:
-        if not isinstance(c, dict):
+def _czas_checku(c):
+    """Czas startu przebiegu checku do porównań: „9999” = niezakończony (GitHub podaje 0001-01-01 – jest najnowszy);
+    "" = brak danych o czasie."""
+    for p in ("startedAt", "createdAt", "completedAt"):
+        v = str(c.get(p) or "")
+        if v.startswith("0001-"):
+            return "9999"
+        if v:
+            return v
+    return ""
+
+
+def _waga_wyniku(s):
+    return 2 if s in CI_ZLE else 0 if s in CI_DOBRE else 1        # czerwony > w toku > zielony
+
+
+def _wynik_checku(c):
+    return str(c.get("conclusion") or c.get("state") or c.get("status") or "").upper()
+
+
+def _klucz_checku(c):
+    return (str(c.get("workflowName") or ""), str(c.get("name") or c.get("context") or "?"))
+
+
+def ostatnie_checki(rollup):
+    """Ostatni przebieg każdego checku (klucz: workflow + nazwa). `statusCheckRollup` zawiera WSZYSTKIE przebiegi na head,
+    także czerwone sprzed ponowienia – liczy się tylko najnowszy wg czasu startu. Remis czasu albo brak czasu przy kilku
+    przebiegach tego samego checku = nie da się ustalić kolejności → bierzemy najgorszy wynik (czerwony)."""
+    grupy = {}
+    for c in rollup or []:
+        if isinstance(c, dict):
+            grupy.setdefault(_klucz_checku(c), []).append(c)
+    wynik = {}
+    for kl, runy in grupy.items():
+        if len(runy) == 1:
+            wynik[kl] = runy[0]
             continue
-        s = str(c.get("conclusion") or c.get("state") or c.get("status") or "").upper()
+        if any(not _czas_checku(c) for c in runy):
+            kandydaci = runy                                        # brak danych o czasie – kolejność nieznana
+        else:
+            naj = max(_czas_checku(c) for c in runy)
+            kandydaci = [c for c in runy if _czas_checku(c) == naj]
+        wynik[kl] = max(kandydaci, key=lambda c: _waga_wyniku(_wynik_checku(c)))
+    return wynik
+
+
+def ci(pr, repo_gh, ust):
+    """-> (OK | BRAK | CZERWONE | TRWA, nazwy czerwonych checków). Pusta lista checków to BRAK, nie zielone.
+    Liczy się ostatni przebieg każdego checku (ostatnie_checki), nie każdy wpis rollupu."""
+    stany, zle = [], []
+    for c in ostatnie_checki(pr.get("statusCheckRollup")).values():
+        s = _wynik_checku(c)
         stany.append(s)
         if s in CI_ZLE:
             zle.append(czysc(c.get("name") or c.get("context") or "?", 40))
@@ -498,6 +545,19 @@ def ci(pr, repo_gh, ust):
     if not stany:
         return ("BRAK" if ust["ci_wymagane"] and repo_gh not in ust["bez_ci"] else "OK"), []
     return ("OK" if all(s in CI_DOBRE for s in stany) else "TRWA"), []
+
+
+def check_na_head(pr, nazwa):
+    """Warunek „zielony <check> na head”: -> (True | False, opis). Nazwa = nazwa checku, kontekst statusu albo
+    „<workflow> / <nazwa>”; zielony = ostatni przebieg ma SUCCESS (NEUTRAL i SKIPPED nie spełniają warunku)."""
+    pasujace = [c for (wf, n), c in ostatnie_checki((pr or {}).get("statusCheckRollup")).items()
+                if nazwa in (n, "%s / %s" % (wf, n))]
+    if not pasujace:
+        return False, "check %s nieobecny na head" % czysc(nazwa, 40)
+    zle = [_wynik_checku(c) for c in pasujace if _wynik_checku(c) != "SUCCESS"]
+    if zle:
+        return False, "check %s na head: %s" % (czysc(nazwa, 40), zle[0] or "?")
+    return True, ""
 
 
 class Kontekst:
@@ -566,8 +626,10 @@ class Kontekst:
         return ""
 
 
-def werdykt_pol(w, repo_gh, k):
-    """Pola maszynowe werdyktu -> (TAK | NIE | WARUNEK | ZALEZNOSC | NIEJASNY, uwaga). Prozy werdyktu skrypt nie czyta."""
+def werdykt_pol(w, repo_gh, k, pr=None):
+    """Pola maszynowe werdyktu -> (TAK | NIE | WARUNEK | ZALEZNOSC | NIEJASNY, uwaga). Prozy werdyktu skrypt nie czyta.
+    Formy maszynowe warunku: „po #N” / „po <repo>#N” (zależność) i „zielony <check> na head” (sprawdzany na `pr` – bez
+    `pr` albo gdy niespełniony, zostaje warunkiem do oceny CEO). Każdy inny warunek, także forma z dopiskiem – WARUNEK."""
     wynik = str(w.get("wynik", "")).strip().upper()
     if wynik not in ("OK", "OK Z UWAGAMI", "ZMIANY"):
         return "NIEJASNY", "nieznany wynik werdyktu"
@@ -587,8 +649,16 @@ def werdykt_pol(w, repo_gh, k):
         return "NIEJASNY", "„warunki” i „kroki” muszą być listami"
     if sc == "warunek" and not warunki and not kroki:
         return "NIEJASNY", "scalenie: warunek bez warunków i kroków"
-    inne, czeka = 0, []
+    inne, czeka, niespelnione = 0, [], []
     for wr in warunki:
+        mc = RE_CHECK.fullmatch(str(wr).strip())
+        if mc:
+            ok, uw_ch = check_na_head(pr, mc.group(1) or mc.group(2)) if pr is not None else (False, "")
+            if not ok:
+                inne += 1
+                if uw_ch:
+                    niespelnione.append(uw_ch)
+            continue
         m = RE_PO.match(str(wr).strip())
         if not m:
             inne += 1
@@ -606,7 +676,8 @@ def werdykt_pol(w, repo_gh, k):
         elif s != "MERGED":
             return "NIEJASNY", "zależność %s nie jest ani otwarta, ani scalona" % kz
     if inne or kroki:
-        return "WARUNEK", "warunki do oceny: %d, kroki: %d%s" % (inne, len(kroki), ("; czeka też na " + ", ".join(czeka)) if czeka else "")
+        return "WARUNEK", "warunki do oceny: %d, kroki: %d%s%s" % (inne, len(kroki), ("; " + "; ".join(niespelnione[:2])) if niespelnione else "",
+                                                                 ("; czeka też na " + ", ".join(czeka)) if czeka else "")
     if czeka:
         return "ZALEZNOSC", "czeka na " + ", ".join(czeka)
     return "TAK", ""
@@ -631,7 +702,7 @@ def _klasa(pr, repo_gh, k):
     sha = str(w.get("sha") or "").strip().lower()
     if len(sha) < 7 or not re.match(r"^[0-9a-f]+$", sha) or not head.startswith(sha):
         return "NOWY_HEAD", "werdykt dla %s, head %s" % (czysc(sha[:10], 10) or "–", head[:10])
-    pol, uw_pol = werdykt_pol(w, repo_gh, k)
+    pol, uw_pol = werdykt_pol(w, repo_gh, k, pr)
     if pol == "NIE":
         return "NIE_SCALAC", uw_pol
     baza = str(pr.get("baseRefName") or "")
@@ -1813,7 +1884,7 @@ def przeszkody(pr, repo_gh, k):
         sha = str(w.get("sha") or "").strip().lower()
         if len(sha) < 7 or not re.match(r"^[0-9a-f]+$", sha) or not head.startswith(sha):
             twarde.append("werdykt dotyczy innego commita")
-        pol, uw = werdykt_pol(w, repo_gh, k)
+        pol, uw = werdykt_pol(w, repo_gh, k, pr)
         if pol in ("NIE", "NIEJASNY", "ZALEZNOSC"):
             twarde.append("werdykt: %s%s" % (pol, (" – " + uw) if uw else ""))
     if str(pr.get("baseRefName") or "") != ust["galaz_glowna"]:

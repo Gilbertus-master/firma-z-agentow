@@ -11,10 +11,16 @@ set -u
 cd "$(dirname "$0")/.." || exit 2
 
 TESTY=(
+  "zasady: skróty bloku i sekcji A, blok w treściach i promptach|python3 -m unittest discover -s scripts -p 'test_zasady_skroty.py' && python3 -I scripts/zasady_skroty.py sprawdz"
+  "wymiana: rekordy procesu 16, bramka danych|python3 -m unittest discover -s scripts -p 'test_wymiana.py'"
+  "odkrycia: szkice odkryć z własnego repo|python3 -m unittest discover -s scripts -p 'test_odkrycia.py'"
+  "zgodnosc: szkielet projektu wobec szablonu|python3 -m unittest discover -s scripts -p 'test_zgodnosc.py'"
   "flota: prompty zgodne z manifestem|python3 flota/generuj.py --sprawdz"
   "flota: manifest, generator, archiwizacja|python3 -m unittest discover flota"
   "straznik: kontrole bez LLM|python3 -m unittest discover moduly/straznik"
   "przebieg: blokada, okienka, CISZA|bash scripts/test-przebieg.sh"
+  "zapisz: własne ścieżki, wyścig zapisów, konflikt|bash scripts/test-zapisz.sh"
+  "znaczniki konfliktu: śledzone pliki bez znaczników|python3 -m unittest discover -s scripts -p 'test_znaczniki_konfliktu.py'"
   "init-org: jawny wybór dzielenia się ulepszeniami|bash scripts/test-init-org.sh"
   "propozycje: zgłoszenia ulepszeń do szablonu|python3 -m unittest discover -s scripts -p 'test_propozycje.py'"
   "koszt: pomiar kosztu przebiegu|python3 -m unittest discover -s scripts -p 'test_koszt.py'"
@@ -28,6 +34,9 @@ TESTY=(
   "ewaluacje: runner (bez modelu)|python3 -I ewaluacje/uruchom.py --tylko-sprawdz"
   "pm: backlog i rejestr sesji|python3 -m unittest discover pm/narzedzia"
   "recenzent: skan PR|bash recenzent/skrypty/test_skan.sh"
+  "skan danych: wzorce, wyjątki, poczekalnia|python3 -m unittest discover -s scripts -p 'test_skan_danych.py'"
+  "skan danych: repo bez danych osobowych|python3 -I scripts/skan-danych.py"
+  "rejestry wrażliwe: w gicie tylko nagłówki|python3 -m unittest discover -s scripts -p 'test_rejestry_git.py' && python3 -I scripts/rejestry-git.py"
 )
 
 if [ "${1:-}" = "--lista" ]; then

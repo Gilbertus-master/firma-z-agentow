@@ -25,6 +25,8 @@ jobs:
         run: |
           git config --global user.email "ci@example.invalid"
           git config --global user.name "ci"
+      - name: Bramka zasad bezpieczeństwa (skróty bloku i sekcji A zasady.md – scripts/zasady_skroty.py)
+        run: python3 -I scripts/zasady_skroty.py sprawdz
       - name: Pełna suita szablonu (scripts/testy.sh – ta sama lista co lokalnie)
         run: bash scripts/testy.sh
 

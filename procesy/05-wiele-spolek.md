@@ -44,6 +44,8 @@ Skrypt: `scripts/aktualizuj-z-szablonu.sh [--sucho] [--url …] [--galaz main]` 
 **Rytm:** raz w miesiącu (pierwszy PEŁNY przebieg CEO po przeglądzie agentów – proces 50) albo zdarzeniowo, gdy szablon ogłasza poprawkę
 bezpieczeństwa (hook, strażnik). Wykonuje CEO spółki w PR-ze albo operator; aktualizacja nie jest czynnością zewnętrzną, scalenie PR-a – tak
 (`pr_scalenie_bez_migracji`).
+Po każdej aktualizacji (i co najmniej raz w tygodniu) CEO spółki mierzy zbieżność szkieletu `python3 -I scripts/zgodnosc.py` i wysyła
+rekord `zgodnosc` (procesy/16-wymiana-ceo.md, sekcja 6); odstępstwo trwałe = wpis w `.szablon-lokalne` z powodem w komentarzu.
 
 ### Co wolno nadpisać lokalnie, a co płynie z szablonu
 
@@ -53,7 +55,7 @@ bezpieczeństwa (hook, strażnik). Wykonuje CEO spółki w PR-ze albo operator; 
 | `.claude/` (hook uprawnień, skille, ustawienia), `moduly/straznik/`, `scripts/`, `flota/generuj.py`, `flota/szablony/`, testy | `polityki/`, `decyzje/`, `decyzje.md`, `ryzyka.md` (treść spółki), `backlog.md`, `rejestr-sesji.md` |
 | `role/*.md`, `role/szablony/`, `procesy/`, `docs/`, `toolbelt/*.md` (katalog, zasady), `ewaluacje/_startowe/`, `ewaluacje/*.py` | `koordynacja-odstepy.tsv`, `flota/zadania.yaml`, `flota/etykiety.tsv`, `ceo/handoff/prompty/`, `ceo/handoff/routines/` (generowane) |
 | `pm/specyfikacje/`, `pm/narzedzia/`, `ceo/kpi/kpi.md` (szkielet F1–F12 – spółka dopisuje swoje O/K/A w osobnych sekcjach; konflikt możliwy) | katalogi agentów: `*/agent.md`, `*/dziennik.md`, `*/stan.json`, `*/backlog.md`, `*/wiedza/`, `*/analizy/`, `*/szkice/`, rejestry ról |
-| `README.md`, `PRZECZYTAJ-NAJPIERW.md`, `CLAUDE.md` | `zlecenia/`, `przebiegi/`, `incydenty/`, `bezpieczenstwo/audyt/`, `bezpieczenstwo/blokady.jsonl`, `bezpieczenstwo/rejestr-ai.md`, `toolbelt/mcp-odciski.tsv`, `ewaluacje/<agent>/`, `operator/kolejka.md`, `ceo/do-decyzji.md`, `ceo/plan/`, `ceo/straznik-zdarzenia.md` |
+| `README.md`, `PRZECZYTAJ-NAJPIERW.md`, `CLAUDE.md` | `zlecenia/`, `przebiegi/`, `incydenty/`, `bezpieczenstwo/audyt/`, `bezpieczenstwo/blokady.jsonl`, `bezpieczenstwo/rejestr-ai.md`, `toolbelt/mcp-odciski.tsv`, `ewaluacje/<agent>/`, `operator/kolejka.md`, `ceo/do-decyzji.md`, `ceo/plan/`, `ceo/straznik-zdarzenia.md`, `ceo/scalanie/stan.json`, `ceo/scalanie/dziennik.jsonl`, `ceo/kontrole/wyniki.jsonl`, `recenzent/szablony/`, `.github/workflows/straznik.yml` (harmonogram włącza `init-org.sh`) |
 
 Spółka może dopisać ścieżkę do `.szablon-lokalne` (np. własny proces `procesy/45-…` – i tak nie koliduje) albo ją usunąć (np. chce
 przyjmować `uprawnienia.yaml` z szablonu) – to decyzja CEO spółki zapisana w dzienniku. Zmiana `role/<rola>.md` lokalnie jest dozwolona,

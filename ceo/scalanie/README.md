@@ -43,6 +43,11 @@ Pełna treść zadania: `flota/szablony/tresc/scalanie.md` → `ceo/handoff/prom
 | bez ruchu | `CZEKA_NA_RODZICA`, `ZALEZNOSC`, `CI_TRWA`, `NIE_SCALAC`, `WSTRZYMANY`, `SZKIC`, `SWIEZY`, `CZEKA_NA_GLOWNA`, `NIEZNANY` | nikt – czeka na zdarzenie |
 
 Kolejność sprawdzeń jest stała i od najostrzejszych: stan PR-a → werdykt → baza → konflikt → CI → pliki → migracje → etykiety.
+
+**CI = ostatni przebieg każdego checku.** `statusCheckRollup` zawiera wszystkie przebiegi checku na head, także czerwone sprzed
+ponowienia; kolejka bierze dla klucza (workflow, nazwa checku albo kontekst statusu) tylko przebieg z najpóźniejszym czasem
+startu (niezakończony – `0001-01-01` – jest najnowszy). Remis czasu albo brak czasu przy kilku przebiegach = najgorszy wynik
+(czerwony). Ponowione i zielone CI zdejmuje więc `CI_CZERWONE` bez pustego commita.
 Wstrzymanie CEO przykrywa każdą klasę. Tabela kończy się linią `REZERWA_CEO: TAK|NIE – <powód>`.
 
 ## Werdykt recenzenta – pola maszynowe
@@ -54,7 +59,7 @@ Wstrzymanie CEO przykrywa każdą klasę. Tabela kończy się linią `REZERWA_CE
 | `sha` | commit, którego dotyczy werdykt (co najmniej 7 znaków) |
 | `wynik` | `OK` / `POPRAWKI` / … – proza dla ludzi |
 | `scalenie` | `tak` · `nie` · `warunek` – **bez tego pola PR nie zostanie scalony** (`NIEJASNY`) |
-| `warunki` | lista warunków, gdy `scalenie: warunek` |
+| `warunki` | lista warunków, gdy `scalenie: warunek`; formy maszynowe (cały warunek, bez dopisków): `po #N` / `po <nazwa-repo>#N` (kolejka czeka na scalenie tamtego PR-a) i `zielony <check> na head` (nazwa ze spacjami w \`…\`, np. \`Testy / e2e\`; spełniony, gdy **ostatni** przebieg tego checku na bieżącym head ma `SUCCESS` – wtedy bez CEO; nieobecny, pominięty albo czerwony = `WARUNEK`). Każdy inny warunek idzie do CEO |
 | `kroki` | czynności po scaleniu (wykonuje CEO albo właściwy agent, nie agent scalający) |
 | `klasa_migracji` | `{"<plik migracji>": "A" \| "B"}` – każda migracja z PR-a; brak klasy = jak klasa B |
 | `kiedy` | `RRRR-MM-DD GG:MM` – od tej chwili liczy się czas do scalenia |

@@ -10,7 +10,8 @@ W pętli zostają dwie osoby: **właściciel** (decyzje) i **operator** (konta, 
 > **Wymóg projektu: dziel się ulepszeniami.** To open source – chodzi o to, żeby razem rozwinąć ten szablon w lepsze
 > rozwiązanie. Od każdego, kto z niego korzysta, wymagamy, żeby ulepszenia mechanizmów wracały tutaj: przez `--dziel-sie tak`
 > przy zakładaniu firmy albo przez pull request. To zasada współpracy w tym projekcie, a nie warunek licencji – Apache-2.0
-> jej nie wymusza. Co dokładnie wychodzi z Twojego repozytorium: sekcja „Dzielenie się ulepszeniami”.
+> jej nie wymusza. Co dokładnie wychodzi z Twojego repozytorium: sekcja „Dzielenie się ulepszeniami”. Prosimy też każdego,
+> kto korzysta z kodu, o zgłoszenie „Zgłoś swój projekt” – sekcja „Jak wysyłać uwagi i odkrycia do wydawcy”.
 
 > **Stan.** Rdzeń jest wydzielony z prywatnego szablonu, na którym pracuje prawdziwa flota. Przechodzi własne testy
 > (`bash scripts/testy.sh`, bez sieci i bez LLM). Nikt spoza autorów nie uruchomił go jeszcze od początku do końca –
@@ -36,6 +37,8 @@ W pętli zostają dwie osoby: **właściciel** (decyzje) i **operator** (konta, 
 | Pomiar kosztu – tokeny × cennik dla każdego przebiegu, z projekcją miesięczną | `scripts/koszt.py` |
 | Ewaluacje ról, w tym scenariusze adwersaryjne | `ewaluacje/` |
 | Aktualizacje szablonu jako cotygodniowy PR i zgłoszenia ulepszeń z powrotem do tego repozytorium | `scripts/aktualizuj-z-szablonu.sh`, `scripts/propozycje.py` |
+| Wymiana odkryć i wydań między CEO projektów a wydawcą szablonu (jeden rekord = jedno zgłoszenie) i pomiar zbieżności szkieletu z szablonem | `procesy/16-wymiana-ceo.md`, `scripts/wymiana.py`, `scripts/odkrycia.py`, `scripts/zgodnosc.py` |
+| Skaner danych osobowych w repo, rejestry wrażliwe bez danych w gicie, bramka skrótów zasad bezpieczeństwa | `scripts/skan-danych.py`, `scripts/rejestry-git.py`, `scripts/zasady_skroty.py` |
 | Minimalny start: pięć zadań zaplanowanych (`limit`, `scalanie`, `ceo`, `recenzent`, `pm`); `architekt` – cotygodniowe aktualizacje i zgłoszenia – dochodzi jako następny | `flota/zadania.yaml` |
 
 Poza rdzeniem (część pełnego szablonu): biblioteka kolejnych ról, kontrole menedżerskie i KPI, model rentowności,
@@ -63,6 +66,26 @@ Skille rdzenia są też paczką wtyczki (`plugins/`, opis: `plugins/<nazwa>/READ
 gdzie `<nazwa>` to nazwa tego repozytorium. Skill `nowa-organizacja` zakłada repo firmy i prowadzi przez pierwsze uruchomienie.
 Wtyczka nie zawiera hooków ani uprawnień – zabezpieczenia floty działają w repo firmy.
 
+## Jak wysyłać uwagi i odkrycia do wydawcy
+Kanałem uwag i odkryć jest **to repozytorium** – zgłoszenia (Issues) i propozycje zmian (pull requesty). Trzy drogi, od najprostszej:
+
+1. **Zgłoszenie w tym repozytorium** – wzory: „Propozycja ulepszenia”, „Wymiana – odkrycie” i „Zgłoś swój projekt”.
+2. **Rekord procesu 16 jednym poleceniem** z repo Twojej firmy: `python3 -I scripts/wymiana.py wyslij <rekord.json> --zakazane "<nazwy firm, klientów>"`
+   (rekord: `wymiana.py wzor odkrycie`, opis: `procesy/16-wymiana-ceo.md`). Domyślnym celem jest repo wydawcy tej edycji
+   (`org.yaml → repo.szablon`), ale narzędzie wysyła dopiero po świadomym wyborze: `repo.dziel_sie_ulepszeniami: true`
+   (`scripts/init-org.sh --dziel-sie tak`) albo `--publicznie` przy poleceniu. Bez tego kończy się kodem 3 i nic nie wychodzi;
+   podgląd: `--na-sucho`. Nie potrzebujesz żadnych uprawnień w repo wydawcy: gdy repo nie przyjmie etykiet, narzędzie wysyła
+   zgłoszenie bez nich, a etykiety (albo `poza-schematem` z powodem) nadaje workflow wydawcy `wymiana-etykiety.yml`.
+3. **Propozycja zmiany** – pull request z podpisem DCO (`git commit -s`), zasady: `CONTRIBUTING.md`.
+
+**Zgłoszenia są JAWNE** – widzi je każdy, razem z nazwą konta GitHub, z którego wyszły. Rekordy procesu 16 i propozycje z
+`scripts/propozycje.py` przechodzą bramkę danych (e-maile, telefony, PESEL, NIP, IBAN, sekrety, nazwy z `--zakazane`), ale bramka
+działa na wzorcach: nie wklejaj danych klientów, sekretów ani nazw firm.
+
+**Zgłoś swój projekt.** Prosimy każdego, kto korzysta z tego kodu, o zapisanie się jako kontrybutor: zgłoszenie „Zgłoś swój
+projekt” (skrót projektu, wersja szablonu, język, czy chcesz dostawać wydania). To zasada współpracy w tym projekcie, a nie
+warunek licencji – Apache-2.0 jej nie wymusza. Przypomina o tym też komunikat końcowy `scripts/init-org.sh`.
+
 ## Dzielenie się ulepszeniami – jawny wybór właściciela
 Projekt jest otwarty po to, żeby rozwijać go razem: wymagamy, żeby floty, które z niego korzystają, oddawały swoje
 ulepszenia – wybierz `--dziel-sie tak`. Technicznie nic nie wychodzi bez świadomego włączenia przez właściciela firmy.
@@ -82,11 +105,37 @@ zapisuje wybór w `org.yaml` oraz w decyzji startowej. Przy „nie” – i w re
 | **Podgląd** | `python3 -I scripts/propozycje.py zbierz` pokazuje, co zostałoby wysłane; `propozycje/wyslane.jsonl` – co wysłano. |
 | **Wyłączenie** | `org.yaml` → `repo.dziel_sie_ulepszeniami: false`. Od tej chwili nic nie wychodzi; to, co już opublikowano, pozostaje publiczne. |
 
-Innej telemetrii nie ma.
+Innej telemetrii nie ma. Rekordy procesu 16 (`scripts/wymiana.py`) idą do tego repozytorium tylko po tym samym świadomym
+wyborze albo z `--publicznie` – sekcja „Jak wysyłać uwagi i odkrycia do wydawcy”.
 
 ## Aktualizacje
 W każdy poniedziałek architekt uruchamia `scripts/aktualizuj-z-szablonu.sh --pr`: najnowsze wydanie przychodzi jako PR, który
 przechodzi przez recenzenta i kolejkę scalania. Zmiany w `zasady.md` i `.claude/` czekają na decyzję właściciela.
+
+## Zmiany
+**0.2.0 (12.11.2026)**
+- Proces 16 – wymiana odkryć i wydań między CEO projektów a wydawcą szablonu: `scripts/wymiana.py` (jeden rekord = jedno
+  zgłoszenie, jeden schemat JSON, bramka danych przed wysyłką), `scripts/odkrycia.py` (szkice odkryć z commitów mechanizmów
+  własnego repo), `scripts/zgodnosc.py` (zbieżność szkieletu z szablonem po ścieżkach i skrótach, bez historii git), wzory
+  zgłoszeń, workflow etykiet po stronie wydawcy (`wymiana-etykiety.yml`, wysyłka bez uprawnień w repo wydawcy). W tej edycji kanałem jest publiczne repo wydawcy; wysyłka wymaga świadomego wyboru (`--dziel-sie tak` albo `--publicznie`).
+- Skaner danych osobowych `scripts/skan-danych.py` (PESEL, NIP, IBAN, dokumenty z sumą kontrolną, e-maile spoza domeny firmy,
+  telefony; wyjątki po SHA-256; `--staged` przed commitem) i `scripts/rejestry-git.py` (rejestry wrażliwe w gicie tylko z nagłówkami).
+- Bramka skrótów zasad `scripts/zasady_skroty.py`: sekcja A `zasady.md` i blok zasad w treściach zadań nie zmienią się ani nie
+  znikną bez decyzji właściciela; blok zasad także w treściach `limit` i `scalanie`.
+- `scripts/zapisz.sh` (`scripts/przebieg.sh zapisz`): zapis końca przebiegu – commit tylko podanych ścieżek, rebase albo merge,
+  push z ponowieniami i rozrzutem, nigdy `--force`; test wyścigu dwóch zapisów.
+- Kolejka scalania: CI z ostatniego przebiegu każdego checku; warunek maszynowy `zielony <check> na head`; powiadamianie autora
+  PR-a o werdykcie raz na SHA.
+- Strażnik: alert do adresata kontroli (`zlecenia/<adresat>.md`), eskalacja do CEO i właściciela, rejestr alarmów
+  (`moduly/straznik/eskalacja.py`); adresy maili alertów tylko w plist launchd.
+- Hook uprawnień: nota kredytowa i zwrot przez MCP operatora płatności pod tym samym progiem kwotowym; odmowa przy więcej niż
+  jednym zwrocie w poleceniu.
+- Ścieżki lokalne przy aktualizacji z szablonu (stan kolejki scalania, wyniki ewaluacji, szablony recenzenta, workflow strażnika),
+  `merge=union` dla każdego logu tylko-dopisywanego, test: żaden śledzony plik bez znaczników konfliktu.
+- Kanał uwag i odkryć w publicznym repo wydawcy (sekcja „Jak wysyłać uwagi i odkrycia do wydawcy”) i wzór zgłoszenia
+  „Zgłoś swój projekt”; prośba o zgłoszenie także w komunikacie końcowym `scripts/init-org.sh`.
+- `scripts/propozycje.py`: baza zmian = najnowsza wspólna wersja z szablonem (`repo.szablon_baza`); `scripts/koszt.py`: ceny
+  modeli z 11.11.2026 i progi cen dla długich promptów; `ceo/do-decyzji.md` – jedyne miejsce decyzji właściciela.
 
 ## Licencja i współtworzenie
 Apache-2.0 (`LICENSE`, `NOTICE`). Wkład: `CONTRIBUTING.md` (podpis DCO, bez CLA). Podatności: `SECURITY.md`.

@@ -1,0 +1,15 @@
+{
+ "opis": "Skróty SHA-256 chronionych zasad – zmiana tylko: python3 -I scripts/zasady_skroty.py aktualizuj --decyzja D-… (scripts/zasady_skroty.py).",
+ "skroty": {
+  "blok:zasady-bezpieczenstwa": {
+   "decyzja": "start",
+   "sha256": "774661765eed5463d99e9d9897e63b49243af8670f11e545fcea9d6c88b84908"
+  },
+  "zasady.md:A": {
+   "decyzja": "start",
+   "sha256": "b95d0787a10a072608de694ccfaae4b72a4c7968592c4673d11d241ccada2010"
+  }
+ },
+ "usuniete": {},
+ "wyjatki_tresci": {}
+}

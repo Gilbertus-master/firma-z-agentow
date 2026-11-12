@@ -86,7 +86,9 @@ if [ -f .szablon-lokalne ]; then
 else
   echo "UWAGA: brak .szablon-lokalne – używam listy domyślnej (org.yaml, uprawnienia.yaml, decyzje/, polityki/, zlecenia/, przebiegi/, katalogi agentów)." >&2
   lokalne=(org.yaml uprawnienia.yaml decyzje.md decyzje/ polityki/ zlecenia/ przebiegi/ koordynacja-odstepy.tsv flota/zadania.yaml
-           '*/agent.md' '*/dziennik.md' '*/stan.json' '*/backlog.md' '*/wiedza/' '*/analizy/' '*/szkice/')
+           '*/agent.md' '*/dziennik.md' '*/stan.json' '*/backlog.md' '*/wiedza/' '*/analizy/' '*/szkice/'
+           ceo/scalanie/stan.json ceo/scalanie/dziennik.jsonl ceo/kontrole/wyniki.jsonl 'ewaluacje/[!_]*/' recenzent/szablony/
+           .github/workflows/straznik.yml)
 fi
 pathspec() { # pathspec <ścieżka> [exclude]  → git pathspec z magią
   local p=$1 magia=""

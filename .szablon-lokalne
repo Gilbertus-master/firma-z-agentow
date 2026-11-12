@@ -29,9 +29,17 @@ bezpieczenstwo/audyt/
 bezpieczenstwo/blokady.jsonl
 bezpieczenstwo/rejestr-ai.md
 bezpieczenstwo/HALT
+bezpieczenstwo/rejestry-wrazliwe.tsv  # lista rejestrów wrażliwych firmy (scripts/rejestry-git.py)
 toolbelt/mcp-odciski.tsv
 toolbelt/uslugi/
 ewaluacje/wyniki/
+ewaluacje/[!_]*/                 # scenariusze agentów firmy (procesy/05); ewaluacje/_startowe/ przychodzi z szablonu
+ceo/scalanie/stan.json           # stan kolejki scalania instancji (*/stan.json łapie tylko jeden poziom)
+ceo/scalanie/dziennik.jsonl
+ceo/kontrole/wyniki.jsonl
+ceo/kontrole/wtyczki.tsv         # kontrole dziedzinowe firmy
+recenzent/szablony/              # rubryka i szablony recenzji instancji (nowy-agent.sh)
+.github/workflows/straznik.yml   # init-org.sh włącza w firmie harmonogram, w szablonie jest wyłączony
 */agent.md
 */dziennik.md
 */stan.json
